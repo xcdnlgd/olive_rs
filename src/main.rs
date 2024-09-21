@@ -1,79 +1,70 @@
-use std::{
-    fs::File,
-    io::{BufWriter, Write},
-    path::Path,
-};
+use olive_rs::canvas::Canvas;
 
 const WIDTH: usize = 800;
 const HEIGHT: usize = 600;
 
-pub struct Canvas {
-    pub width: usize,
-    pub height: usize,
-    buffer: Vec<u32>,
-}
-impl Canvas {
-    pub fn new(width: usize, height: usize) -> Self {
-        Self {
-            width,
-            height,
-            buffer: vec![0u32; width * height],
-        }
-    }
-    pub fn fill(&mut self, color: u32) {
-        self.buffer.iter_mut().for_each(|pixel| *pixel = color);
-    }
-    pub fn fill_rect(&mut self, x0: i32, y0: i32, w: usize, h: usize, color: u32) {
-        let xn = if x0 < 0 {
-            w.saturating_sub((-x0) as usize)
-        } else {
-            w.saturating_add(x0 as usize)
-        }
-        .min(self.width);
-        let yn = if x0 < 0 {
-            h.saturating_sub((-y0) as usize)
-        } else {
-            h.saturating_add(y0 as usize)
-        }
-        .min(self.height);
-        let x0 = x0.max(0) as usize;
-        let y0 = y0.max(0) as usize;
-        for y in y0..yn {
-            for x in x0..xn {
-                self.buffer[y * self.width + x] = color;
-            }
-        }
-    }
-    pub fn save_to_ppm_file(&self, path: impl AsRef<Path>) -> std::io::Result<()> {
-        let file = File::create(path)?;
-        let mut file = BufWriter::new(file);
-        write!(file, "P6\n{} {} 255\n", self.width, self.height)?;
-        for &pixel in self.buffer.iter() {
-            let rgb: [u8; 3] = [
-                ((pixel) & 0xFF) as u8,
-                ((pixel >> 8) & 0xFF) as u8,
-                ((pixel >> (8 * 2)) & 0xFF) as u8,
-            ];
-            file.write_all(&rgb)?;
-        }
-        Ok(())
-    }
-}
+const COLS: usize = 8;
+const ROWS: usize = 6;
 
-fn main() {
+const CELL_WIDTH: usize = WIDTH / COLS;
+const CELL_HEIGHT: usize = HEIGHT / ROWS;
+
+const BACKGROUND_COLOR: u32 = 0xFF_202020;
+const FOREGROUND_COLOR: u32 = 0xff_0000ff;
+
+fn checker_example() {
     let mut canvas = Canvas::new(WIDTH, HEIGHT);
-    let file = "a.ppm";
-    let w = 50 * 4;
-    let h = 30 * 4;
-    canvas.fill(0xFF_202020);
-    canvas.fill_rect(
-        (WIDTH / 2 - w / 2) as i32,
-        (HEIGHT / 2 - h / 2) as i32,
-        w,
-        h,
-        0xFF_0000FF,
-    );
+    let file = "checher.ppm";
+    canvas.fill(BACKGROUND_COLOR);
+    for y in 0..ROWS {
+        for x in 0..COLS {
+            let color = if (x + y) % 2 == 0 {
+                FOREGROUND_COLOR
+            } else {
+                BACKGROUND_COLOR
+            };
+            canvas.fill_rect(
+                (x * CELL_WIDTH) as i32,
+                (y * CELL_HEIGHT) as i32,
+                CELL_WIDTH,
+                CELL_HEIGHT,
+                color,
+            );
+        }
+    }
     canvas
         .save_to_ppm_file(file)
         .unwrap_or_else(|e| panic!("cannot open {file}: {}", e));
+}
+
+fn lerp(a: f32, b: f32, t: f32) -> f32{
+    a + (b - a) * t
+}
+
+fn circle_example() {
+    let mut canvas = Canvas::new(WIDTH, HEIGHT);
+    let file = "circle.ppm";
+    canvas.fill(BACKGROUND_COLOR);
+    let r = CELL_HEIGHT.min(CELL_WIDTH) / 2;
+    for y in 0..ROWS {
+        let v = y as f32/ ROWS as f32;
+        for x in 0..COLS {
+            let u = x as f32/ COLS as f32;
+            let t = (u + v) / 2f32;
+            let r = r as f32;
+            let r = lerp(r / 5f32, r, t);
+            canvas.fill_circle(
+                (x * CELL_WIDTH + CELL_WIDTH / 2) as i32,
+                (y * CELL_HEIGHT + CELL_HEIGHT / 2) as i32,
+                r as usize,
+                FOREGROUND_COLOR,
+            );
+        }
+    }
+    canvas.save_to_ppm_file(file).unwrap();
+}
+
+fn main() {
+    checker_example();
+    circle_example();
 }
