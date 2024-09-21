@@ -1,13 +1,13 @@
-use olive_rs::canvas::Canvas;
+use olive_rs::canvas::{u31, Canvas};
 
-const WIDTH: usize = 800;
-const HEIGHT: usize = 600;
+const WIDTH: u31 = 800;
+const HEIGHT: u31 = 600;
 
-const COLS: usize = 8;
-const ROWS: usize = 6;
+const COLS: u31 = 8;
+const ROWS: u31 = 6;
 
-const CELL_WIDTH: usize = WIDTH / COLS;
-const CELL_HEIGHT: usize = HEIGHT / ROWS;
+const CELL_WIDTH: u31 = WIDTH / COLS;
+const CELL_HEIGHT: u31 = HEIGHT / ROWS;
 
 const BACKGROUND_COLOR: u32 = 0xFF_202020;
 const FOREGROUND_COLOR: u32 = 0xff_0000ff;
@@ -56,7 +56,7 @@ fn circle_example() {
             canvas.fill_circle(
                 (x * CELL_WIDTH + CELL_WIDTH / 2) as i32,
                 (y * CELL_HEIGHT + CELL_HEIGHT / 2) as i32,
-                r as usize,
+                r as u31,
                 FOREGROUND_COLOR,
             );
         }
@@ -64,7 +64,19 @@ fn circle_example() {
     canvas.save_to_ppm_file(file).unwrap();
 }
 
+fn line_example() {
+    let mut canvas = Canvas::new(WIDTH, HEIGHT);
+    let file = "line.ppm";
+    canvas.fill(BACKGROUND_COLOR);
+    canvas.draw_line(0, 0, WIDTH as i32, HEIGHT as i32, FOREGROUND_COLOR);
+    canvas.draw_line(WIDTH as i32, 0, 0, HEIGHT as i32, FOREGROUND_COLOR);
+    canvas.draw_line(WIDTH as i32 / 2, 0, WIDTH as i32 / 2, HEIGHT as i32, FOREGROUND_COLOR);
+    canvas.draw_line(0, HEIGHT as i32 / 2, WIDTH as i32, HEIGHT as i32 / 2, FOREGROUND_COLOR);
+    canvas.save_to_ppm_file(file).unwrap();
+}
+
 fn main() {
     checker_example();
     circle_example();
+    line_example();
 }
