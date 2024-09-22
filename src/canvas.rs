@@ -20,6 +20,28 @@ impl Canvas {
             buffer: vec![0u32; (width * height) as usize],
         }
     }
+    pub fn draw_horizontal_line(&mut self, mut x0: i32, mut x1: i32, y: i32, color: u32) {
+        if x1 < x0 {
+            std::mem::swap(&mut x0, &mut x1);
+        }
+        if x1 < 0 {
+            return;
+        }
+        if x0 >= self.width as i32 {
+            return;
+        }
+        x1 += 1;
+        if 0 <= y && (y as u31) < self.height {
+            let y = y as u31;
+            let x0 = x0.max(0) as u31;
+            let xn = (x1 as u31).min(self.width);
+            let start_i = (y * self.width + x0) as usize;
+            let end_i = (y * self.width + xn) as usize;
+            self.buffer[start_i..end_i]
+                .iter_mut()
+                .for_each(|pixel| *pixel = color);
+        }
+    }
     pub fn draw_line(&mut self, x0: i32, y0: i32, x1: i32, y1: i32, color: u32) {
         let (x0, y0, x1, y1) = if let Some(Line2D { x0, y0, x1, y1 }) = (Line2D {
             x0: x0 as f32,
@@ -47,6 +69,48 @@ impl Canvas {
     }
     pub fn fill(&mut self, color: u32) {
         self.buffer.iter_mut().for_each(|pixel| *pixel = color);
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub fn fill_triangle(
+        &mut self,
+        mut x0: i32,
+        mut y0: i32,
+        mut x1: i32,
+        mut y1: i32,
+        mut x2: i32,
+        mut y2: i32,
+        color: u32,
+    ) {
+        sort_by_y(&mut x0, &mut y0, &mut x1, &mut y1, &mut x2, &mut y2);
+        self.draw_pixel(x2, y2, color);
+        let mut ray0 = Ray::new(x0, y0, x1, y1);
+        let mut ray1 = Ray::new(x1, y1, x2, y2);
+        let mut ray2 = Ray::new(x0, y0, x2, y2);
+        let mut row = y0;
+        let (mut x0, mut y0) = ray0.next_xy();
+        let (mut x1, mut y1) = ray1.next_xy();
+        let (mut x2, mut y2) = ray2.next_xy();
+        while row <= ray0.y1 {
+            while y0 != row {
+                (x0, y0) = ray0.next_xy();
+            }
+            while y2 != row {
+                (x2, y2) = ray2.next_xy();
+            }
+            self.draw_horizontal_line(x0, x2, row, color);
+            row += 1;
+        }
+        row -= 1;
+        while row <= ray1.y1 {
+            while y1 != row {
+                (x1, y1) = ray1.next_xy();
+            }
+            while y2 != row {
+                (x2, y2) = ray2.next_xy();
+            }
+            self.draw_horizontal_line(x1, x2, row, color);
+            row += 1;
+        }
     }
     pub fn fill_circle(&mut self, center_x: i32, center_y: i32, r: u31, color: u32) {
         let r = r as i32;
@@ -115,8 +179,6 @@ impl Canvas {
         }
         Ok(())
     }
-}
-impl Canvas {
     fn draw_pixel(&mut self, x: i32, y: i32, color: u32) {
         if x < 0 || y < 0 {
             return;
@@ -304,7 +366,9 @@ impl Ray {
             self.error -= self.dx + self.dx;
         }
         self.x += self.sx;
-        self.reached = self.x == self.x1;
+        if self.x == self.x1 {
+            self.reached = true;
+        }
         result
     }
     fn iter_y(&mut self) -> (i32, i32) {
@@ -315,7 +379,24 @@ impl Ray {
             self.error -= self.dy + self.dy;
         }
         self.y += self.sy;
-        self.reached = self.y == self.y1;
+        if self.y == self.y1 {
+            self.reached = true;
+        }
         result
+    }
+}
+
+fn sort_by_y(x0: &mut i32, y0: &mut i32, x1: &mut i32, y1: &mut i32, x2: &mut i32, y2: &mut i32) {
+    if y0 > y1 {
+        std::mem::swap(y0, y1);
+        std::mem::swap(x0, x1);
+    }
+    if y1 > y2 {
+        std::mem::swap(y1, y2);
+        std::mem::swap(x1, x2);
+    }
+    if y0 > y1 {
+        std::mem::swap(y0, y1);
+        std::mem::swap(x0, x1);
     }
 }
