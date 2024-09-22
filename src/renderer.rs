@@ -155,13 +155,24 @@ impl<'a> Renderer<'a> {
             x0 += 1;
         }
     }
-    pub fn fill_rect(&mut self, x0: i32, y0: i32, w: u31, h: u31, color: u32) {
-        let xn = (x0 + w as i32).clamp(0, self.width as i32) as u31;
-        let yn = (y0 + h as i32).clamp(0, self.height as i32) as u31;
-        let x0 = x0.max(0) as u31;
-        let y0 = y0.max(0) as u31;
-        for y in y0..yn {
-            for x in x0..xn {
+    pub fn fill_rect(&mut self, x0: i32, y0: i32, w: i32, h: i32, color: u32) {
+        if w == 0 || h == 0 {
+            return;
+        }
+        let x1 = if w > 0 { x0 + w - 1} else { x0 + w + 1 };
+        let y1 = if h > 0 { y0 + h - 1} else { y0 + h + 1 };
+        let mut x0 = x0.clamp(0, self.width as i32 - 1) as u31;
+        let mut y0 = y0.clamp(0, self.height as i32 - 1) as u31;
+        let mut x1 = x1.clamp(0, self.width as i32 - 1) as u31;
+        let mut y1 = y1.clamp(0, self.height as i32 - 1) as u31;
+        if x1 < x0 {
+            std::mem::swap(&mut x0, &mut x1);
+        }
+        if y1 < y0 {
+            std::mem::swap(&mut y0, &mut y1);
+        }
+        for y in y0..=y1 {
+            for x in x0..=x1 {
                 self.draw_pixel_unchecked(x as u31, y as u31, color);
             }
         }
