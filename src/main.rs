@@ -1,7 +1,8 @@
-use olive_rs::canvas::{u31, Canvas};
+use olive_rs::renderer::{u31, Renderer};
 
 const WIDTH: u31 = 800;
 const HEIGHT: u31 = 600;
+const BUFFER_LEN: usize = (WIDTH * HEIGHT) as usize;
 
 const COLS: u31 = 8;
 const ROWS: u31 = 6;
@@ -16,7 +17,8 @@ const GREEN: u32 = 0xff_00ff00;
 const BLUE: u32 = 0xff_ff0000;
 
 fn checker_example() {
-    let mut canvas = Canvas::new(WIDTH, HEIGHT);
+    let mut buffer = [0u32; BUFFER_LEN];
+    let mut canvas = Renderer::new(&mut buffer, WIDTH, HEIGHT);
     let file = "checher.ppm";
     canvas.fill(BACKGROUND_COLOR);
     for y in 0..ROWS {
@@ -45,7 +47,8 @@ fn lerp(a: f32, b: f32, t: f32) -> f32 {
 }
 
 fn circle_example() {
-    let mut canvas = Canvas::new(WIDTH, HEIGHT);
+    let mut buffer = [0u32; BUFFER_LEN];
+    let mut canvas = Renderer::new(&mut buffer, WIDTH, HEIGHT);
     let file = "circle.ppm";
     canvas.fill(BACKGROUND_COLOR);
     let r = CELL_HEIGHT.min(CELL_WIDTH) / 2;
@@ -68,7 +71,8 @@ fn circle_example() {
 }
 
 fn line_example() {
-    let mut canvas = Canvas::new(WIDTH, HEIGHT);
+    let mut buffer = [0u32; BUFFER_LEN];
+    let mut canvas = Renderer::new(&mut buffer, WIDTH, HEIGHT);
     let file = "line.ppm";
     canvas.fill(BACKGROUND_COLOR);
     canvas.draw_line(0, 0, WIDTH as i32, HEIGHT as i32, FOREGROUND_COLOR);
@@ -91,7 +95,8 @@ fn line_example() {
 }
 
 fn triangle_example() {
-    let mut canvas = Canvas::new(WIDTH, HEIGHT);
+    let mut buffer = [0u32; BUFFER_LEN];
+    let mut canvas = Renderer::new(&mut buffer, WIDTH, HEIGHT);
     let file = "triangle.ppm";
     canvas.fill(BACKGROUND_COLOR);
     canvas.fill_triangle(10, 10, 80, 10, 10, 80, FOREGROUND_COLOR);

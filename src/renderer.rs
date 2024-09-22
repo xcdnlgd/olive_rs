@@ -7,17 +7,18 @@ use std::{
 #[allow(non_camel_case_types)]
 pub type u31 = u32;
 
-pub struct Canvas {
+pub struct Renderer<'a> {
+    buffer: &'a mut [u32],
     pub width: u31,
     pub height: u31,
-    buffer: Vec<u32>,
 }
-impl Canvas {
-    pub fn new(width: u31, height: u31) -> Self {
+impl<'a> Renderer<'a> {
+    pub fn new(buffer: &'a mut [u32], width: u31, height: u31) -> Self {
+        assert_eq!((width * height) as usize, buffer.len());
         Self {
+            buffer,
             width,
             height,
-            buffer: vec![0u32; (width * height) as usize],
         }
     }
     pub fn draw_horizontal_line(&mut self, mut x0: i32, mut x1: i32, y: i32, color: u32) {
