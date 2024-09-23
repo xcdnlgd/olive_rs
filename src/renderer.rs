@@ -7,21 +7,48 @@ use std::{
 #[allow(non_camel_case_types)]
 pub type u31 = u32;
 
-pub struct Renderer<'a> {
-    buffer: &'a mut [u32],
+pub struct Renderer<'b> {
+    buffer: &'b mut [u32],
     pub width: u31,
     pub height: u31,
+    draw_horizontal_line_ptr: fn(&mut Self, x0: i32, x1: i32, y: i32, color: u32),
+    draw_pixel_ptr: fn(&mut Self, x: i32, y: i32, color: u32),
+    draw_pixel_unchecked_ptr: fn(&mut Self, x: u31, y: u31, color: u32),
 }
-impl<'a> Renderer<'a> {
-    pub fn new(buffer: &'a mut [u32], width: u31, height: u31) -> Self {
+impl<'b> Renderer<'b> {
+    pub fn new(buffer: &'b mut [u32], width: u31, height: u31) -> Self {
         assert_eq!((width * height) as usize, buffer.len());
+        const BLENDING_ENABLED: bool = false;
         Self {
             buffer,
             width,
             height,
+            draw_horizontal_line_ptr: Self::m_draw_horizontal_line::<BLENDING_ENABLED>,
+            draw_pixel_ptr: Self::m_draw_pixel::<BLENDING_ENABLED>,
+            draw_pixel_unchecked_ptr: Self::m_draw_pixel_unchecked::<BLENDING_ENABLED>,
         }
     }
-    pub fn draw_horizontal_line(&mut self, mut x0: i32, mut x1: i32, y: i32, color: u32) {
+    pub fn begin_blending(&mut self) {
+        self.draw_horizontal_line_ptr = Self::m_draw_horizontal_line::<true>;
+        self.draw_pixel_ptr = Self::m_draw_pixel::<true>;
+        self.draw_pixel_unchecked_ptr = Self::m_draw_pixel_unchecked::<true>;
+    }
+    pub fn end_blending(&mut self) {
+        self.draw_horizontal_line_ptr = Self::m_draw_horizontal_line::<false>;
+        self.draw_pixel_ptr = Self::m_draw_pixel::<false>;
+        self.draw_pixel_unchecked_ptr = Self::m_draw_pixel_unchecked::<false>;
+    }
+    #[inline]
+    pub fn draw_horizontal_line(&mut self, x0: i32, x1: i32, y: i32, color: u32) {
+        (self.draw_horizontal_line_ptr)(self, x0, x1, y, color);
+    }
+    fn m_draw_horizontal_line<const BLENDING_ENABLED: bool>(
+        &mut self,
+        mut x0: i32,
+        mut x1: i32,
+        y: i32,
+        color: u32,
+    ) {
         if x1 < x0 {
             std::mem::swap(&mut x0, &mut x1);
         }
@@ -38,9 +65,13 @@ impl<'a> Renderer<'a> {
             let xn = (x1 as u31).min(self.width);
             let start_i = (y * self.width + x0) as usize;
             let end_i = (y * self.width + xn) as usize;
-            self.buffer[start_i..end_i]
-                .iter_mut()
-                .for_each(|pixel| *pixel = color);
+            self.buffer[start_i..end_i].iter_mut().for_each(|pixel| {
+                if BLENDING_ENABLED {
+                    blend_color(pixel, color);
+                } else {
+                    *pixel = color;
+                }
+            });
         }
     }
     pub fn draw_line(&mut self, x0: i32, y0: i32, x1: i32, y1: i32, color: u32) {
@@ -129,23 +160,29 @@ impl<'a> Renderer<'a> {
         // and other approximation
         let mut x0 = 0;
         let mut y0 = r;
+        let mut last_y = y0;
         let mut d = 3 - 2 * r;
+
+        self.draw_horizontal_line(center_x - y0, center_x + y0, center_y, color);
+        if d < 0 {
+            d += 4 * x0 + 6;
+        } else {
+            d += 4 * (x0 - y0) + 10;
+            y0 -= 1;
+        }
+        x0 += 1;
 
         // only formulate the arc above the line y=x in the first quadrant.
         // iterate x
         while y0 >= x0 {
-            for i in center_x - x0..=center_x + x0 {
-                self.draw_pixel(i, center_y + y0, color);
+            // avoid draw multiple times
+            if y0 != last_y {
+                self.draw_horizontal_line(center_x - x0, center_x + x0, center_y + last_y, color);
+                self.draw_horizontal_line(center_x - x0, center_x + x0, center_y - last_y, color);
+                last_y = y0;
             }
-            for i in center_x - y0..=center_x + y0 {
-                self.draw_pixel(i, center_y + x0, color);
-            }
-            for i in center_x - y0..=center_x + y0 {
-                self.draw_pixel(i, center_y - x0, color);
-            }
-            for i in center_x - x0..=center_x + x0 {
-                self.draw_pixel(i, center_y - y0, color);
-            }
+            self.draw_horizontal_line(center_x - y0, center_x + y0, center_y + x0, color);
+            self.draw_horizontal_line(center_x - y0, center_x + y0, center_y - x0, color);
             if d < 0 {
                 d += 4 * x0 + 6;
             } else {
@@ -154,13 +191,15 @@ impl<'a> Renderer<'a> {
             }
             x0 += 1;
         }
+        self.draw_horizontal_line(center_x - x0, center_x + x0, center_y + last_y, color);
+        self.draw_horizontal_line(center_x - x0, center_x + x0, center_y - last_y, color);
     }
     pub fn fill_rect(&mut self, x0: i32, y0: i32, w: i32, h: i32, color: u32) {
         if w == 0 || h == 0 {
             return;
         }
-        let x1 = if w > 0 { x0 + w - 1} else { x0 + w + 1 };
-        let y1 = if h > 0 { y0 + h - 1} else { y0 + h + 1 };
+        let x1 = if w > 0 { x0 + w - 1 } else { x0 + w + 1 };
+        let y1 = if h > 0 { y0 + h - 1 } else { y0 + h + 1 };
         let mut x0 = x0.clamp(0, self.width as i32 - 1) as u31;
         let mut y0 = y0.clamp(0, self.height as i32 - 1) as u31;
         let mut x1 = x1.clamp(0, self.width as i32 - 1) as u31;
@@ -191,19 +230,34 @@ impl<'a> Renderer<'a> {
         }
         Ok(())
     }
+    #[inline]
     fn draw_pixel(&mut self, x: i32, y: i32, color: u32) {
+        (self.draw_pixel_ptr)(self, x, y, color);
+    }
+    fn m_draw_pixel<const BLENDING_ENABLED: bool>(&mut self, x: i32, y: i32, color: u32) {
         if x < 0 || y < 0 {
             return;
         }
         let x = x as u31;
         let y = y as u31;
         if x < self.width && y < self.height {
-            self.buffer[(y * self.width + x) as usize] = color;
+            if BLENDING_ENABLED {
+                blend_color(&mut self.buffer[(y * self.width + x) as usize], color);
+            } else {
+                self.buffer[(y * self.width + x) as usize] = color;
+            }
         }
     }
     #[inline]
     fn draw_pixel_unchecked(&mut self, x: u31, y: u31, color: u32) {
-        self.buffer[(y * self.width + x) as usize] = color;
+        (self.draw_pixel_unchecked_ptr)(self, x, y, color);
+    }
+    fn m_draw_pixel_unchecked<const BLENDING_ENABLED: bool>(&mut self, x: u31, y: u31, color: u32) {
+        if BLENDING_ENABLED {
+            blend_color(&mut self.buffer[(y * self.width + x) as usize], color);
+        } else {
+            self.buffer[(y * self.width + x) as usize] = color;
+        }
     }
 }
 
@@ -410,5 +464,30 @@ fn sort_by_y(x0: &mut i32, y0: &mut i32, x1: &mut i32, y1: &mut i32, x2: &mut i3
     if y0 > y1 {
         std::mem::swap(y0, y1);
         std::mem::swap(x0, x1);
+    }
+}
+
+fn blend_color(bottom_color: &mut u32, top_color: u32) {
+    let mut bottom_color_components = [0u8; 4];
+    for (i, color_component) in bottom_color_components.iter_mut().enumerate() {
+        *color_component = (*bottom_color >> (8 * i) & 0xff) as u8;
+    }
+    let mut top_color_components = [0u8; 4];
+    for (i, color_component) in top_color_components.iter_mut().enumerate() {
+        *color_component = (top_color >> (8 * i) & 0xff) as u8;
+    }
+    let aa = top_color_components[3] as u16;
+    bottom_color_components
+        .iter_mut()
+        .zip(top_color_components.iter())
+        .take(3)
+        .for_each(|(bottom_color_component, &color_component)| {
+            *bottom_color_component = (((color_component as u16) * aa
+                + (0xff - aa) * (*bottom_color_component as u16))
+                / 0xff) as u8;
+        });
+    *bottom_color &= 0xff000000;
+    for (i, bottom_color_component) in bottom_color_components.iter().enumerate().take(3) {
+        *bottom_color |= (*bottom_color_component as u32) << (8 * i);
     }
 }

@@ -10,7 +10,7 @@ const ROWS: u31 = 6;
 const CELL_WIDTH: u31 = WIDTH / COLS;
 const CELL_HEIGHT: u31 = HEIGHT / ROWS;
 
-const BACKGROUND_COLOR: u32 = 0xFF_202020;
+const BACKGROUND_COLOR: u32 = 0xff_202020;
 const FOREGROUND_COLOR: u32 = 0xff_0000ff;
 const RED: u32 = 0xff_0000ff;
 const GREEN: u32 = 0xff_00ff00;
@@ -48,7 +48,45 @@ fn rect_example() {
     let mut renderer = Renderer::new(&mut buffer, WIDTH, HEIGHT);
     renderer.fill(BACKGROUND_COLOR);
     renderer.fill_rect(0, 0, WIDTH as i32 * 3 / 4, HEIGHT as i32 * 3 / 4, RED);
-    renderer.fill_rect(WIDTH as i32 - 1, HEIGHT as i32 - 1, -(WIDTH as i32 * 3 / 4), -(HEIGHT as i32 * 3 / 4), GREEN);
+    renderer.fill_rect(
+        WIDTH as i32 - 1,
+        HEIGHT as i32 - 1,
+        -(WIDTH as i32 * 3 / 4),
+        -(HEIGHT as i32 * 3 / 4),
+        GREEN,
+    );
+    renderer
+        .save_to_ppm_file(file)
+        .unwrap_or_else(|e| panic!("cannot open {file}: {}", e));
+}
+
+fn alpha_example() {
+    let file = "alpha.ppm";
+    let mut buffer = [0u32; BUFFER_LEN];
+    let mut renderer = Renderer::new(&mut buffer, WIDTH, HEIGHT);
+    renderer.fill(BACKGROUND_COLOR);
+    renderer.fill_rect(0, 0, WIDTH as i32 * 3 / 4, HEIGHT as i32 * 3 / 4, RED);
+    renderer.begin_blending();
+    {
+        renderer.fill_rect(
+            WIDTH as i32 - 1,
+            HEIGHT as i32 - 1,
+            -(WIDTH as i32 * 3 / 4),
+            -(HEIGHT as i32 * 3 / 4),
+            0x55_00ff00,
+        );
+        renderer.fill_triangle(
+            WIDTH as i32 / 2,
+            HEIGHT as i32 / 8,
+            WIDTH as i32 * 7 / 8,
+            HEIGHT as i32 / 8,
+            WIDTH as i32 / 2,
+            HEIGHT as i32 / 2,
+            0x55_ff0000,
+        );
+        renderer.fill_circle(WIDTH as i32 / 4, HEIGHT as i32 * 3 / 4, 100, 0x55_00ffff);
+    }
+    renderer.end_blending();
     renderer
         .save_to_ppm_file(file)
         .unwrap_or_else(|e| panic!("cannot open {file}: {}", e));
@@ -149,4 +187,5 @@ fn main() {
     line_example();
     triangle_example();
     rect_example();
+    alpha_example();
 }
