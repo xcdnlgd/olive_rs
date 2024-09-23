@@ -145,12 +145,19 @@ impl<'b> Renderer<'b> {
         }
     }
     pub fn fill_circle(&mut self, center_x: i32, center_y: i32, r: u31, color: u32) {
-        let r = r as i32;
+        if r == 0 {
+            return;
+        }
+        if r == 1 {
+            self.draw_pixel(center_x, center_y, color);
+            return;
+        }
+        let r = r as i32 - 1;
 
         if center_x + r < 0
             || center_y + r < 0
-            || (center_x - r) as u31 > self.width
-            || (center_y - r) as u31 > self.height
+            || center_x - r >= self.width as i32
+            || center_y - r >= self.height as i32
         {
             return;
         }
@@ -163,6 +170,7 @@ impl<'b> Renderer<'b> {
         let mut last_y = y0;
         let mut d = 3 - 2 * r;
 
+        // horizontal_center_line draw once
         self.draw_horizontal_line(center_x - y0, center_x + y0, center_y, color);
         if d < 0 {
             d += 4 * x0 + 6;
@@ -177,8 +185,9 @@ impl<'b> Renderer<'b> {
         while y0 >= x0 {
             // avoid draw multiple times
             if y0 != last_y {
-                self.draw_horizontal_line(center_x - x0, center_x + x0, center_y + last_y, color);
-                self.draw_horizontal_line(center_x - x0, center_x + x0, center_y - last_y, color);
+                let last_x = x0 - 1;
+                self.draw_horizontal_line(center_x - last_x, center_x + last_x, center_y + last_y, color);
+                self.draw_horizontal_line(center_x - last_x, center_x + last_x, center_y - last_y, color);
                 last_y = y0;
             }
             self.draw_horizontal_line(center_x - y0, center_x + y0, center_y + x0, color);
@@ -191,8 +200,14 @@ impl<'b> Renderer<'b> {
             }
             x0 += 1;
         }
-        self.draw_horizontal_line(center_x - x0, center_x + x0, center_y + last_y, color);
-        self.draw_horizontal_line(center_x - x0, center_x + x0, center_y - last_y, color);
+        // because we are always drawing last_y in the loop, so we miss one y
+        let last_x = x0 - 1;
+        if last_x == last_y {
+            // the missing y have been drawn by last x
+            return;
+        }
+        self.draw_horizontal_line(center_x - last_x, center_x + last_x, center_y + last_y, color);
+        self.draw_horizontal_line(center_x - last_x, center_x + last_x, center_y - last_y, color);
     }
     pub fn fill_rect(&mut self, x0: i32, y0: i32, w: i32, h: i32, color: u32) {
         if w == 0 || h == 0 {
