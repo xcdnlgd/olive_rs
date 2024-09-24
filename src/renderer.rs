@@ -126,29 +126,32 @@ impl<'b> Renderer<'b> {
         let mut ray1 = Ray::new(x1, y1, x2, y2);
         let mut ray2 = Ray::new(x0, y0, x2, y2);
         let mut row = y0;
-        let (mut x0, mut y0) = ray0.next_xy();
-        let (mut x1, mut y1) = ray1.next_xy();
-        let (mut x2, mut y2) = ray2.next_xy();
-        while row <= ray0.y1 {
-            while y0 != row {
-                (x0, y0) = ray0.next_xy();
+        let (mut cx0, mut cy0) = ray0.next_xy();
+        let (mut cx1, mut cy1) = ray1.next_xy();
+        let (mut cx2, mut cy2) = ray2.next_xy();
+        if y1 != y0 {
+            while row <= ray0.y1 {
+                while cy0 != row {
+                    (cx0, cy0) = ray0.next_xy();
+                }
+                while cy2 != row {
+                    (cx2, cy2) = ray2.next_xy();
+                }
+                self.draw_horizontal_line(cx0, cx2, row, color);
+                row += 1;
             }
-            while y2 != row {
-                (x2, y2) = ray2.next_xy();
-            }
-            self.draw_horizontal_line(x0, x2, row, color);
-            row += 1;
         }
-        row -= 1;
-        while row <= ray1.y1 {
-            while y1 != row {
-                (x1, y1) = ray1.next_xy();
+        if y1 != y2 {
+            while row <= ray1.y1 {
+                while cy1 != row {
+                    (cx1, cy1) = ray1.next_xy();
+                }
+                while cy2 != row {
+                    (cx2, cy2) = ray2.next_xy();
+                }
+                self.draw_horizontal_line(cx1, cx2, row, color);
+                row += 1;
             }
-            while y2 != row {
-                (x2, y2) = ray2.next_xy();
-            }
-            self.draw_horizontal_line(x1, x2, row, color);
-            row += 1;
         }
     }
     #[allow(clippy::too_many_arguments)]
