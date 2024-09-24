@@ -187,7 +187,7 @@ fn circle_aa_example() {
     let file = "circle_aa.ppm";
     renderer.fill(BACKGROUND_COLOR);
     renderer.begin_blending();
-    renderer.fill_cirle_aa(WIDTH as i32 / 2, HEIGHT as i32 / 2, 100, RED);
+    renderer.fill_circle_aa(WIDTH as i32 / 2, HEIGHT as i32 / 2, 100, RED);
     renderer.end_blending();
     renderer.save_to_ppm_file(file).unwrap();
 }

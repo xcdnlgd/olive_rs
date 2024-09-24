@@ -274,7 +274,7 @@ impl<'b> Renderer<'b> {
             color,
         );
     }
-    pub fn fill_cirle_aa(&mut self, center_x: i32, center_y: i32, r: u31, color: u32) {
+    pub fn fill_circle_aa(&mut self, center_x: i32, center_y: i32, r: u31, color: u32) {
         let r = r as i32;
         if let Some(((x0, y0), (x1, y1))) = normalize_rect(
             center_x - r,
