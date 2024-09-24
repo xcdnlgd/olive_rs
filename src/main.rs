@@ -192,6 +192,23 @@ fn circle_aa_example() {
     renderer.save_to_ppm_file(file).unwrap();
 }
 
+fn triangle_aa_example() {
+    let mut buffer = [0u32; BUFFER_LEN];
+    let mut renderer = Renderer::new(&mut buffer, WIDTH, HEIGHT);
+    let file = "triangle_aa.ppm";
+    renderer.fill(BACKGROUND_COLOR);
+    renderer.fill_triangle_aa(
+        WIDTH as i32 / 2,
+        HEIGHT as i32 / 8,
+        WIDTH as i32 / 8,
+        HEIGHT as i32 / 2,
+        WIDTH as i32 * 7 / 8,
+        HEIGHT as i32 * 7 / 8,
+        RED,
+    );
+    renderer.save_to_ppm_file(file).unwrap();
+}
+
 fn main() {
     checker_example();
     circle_example();
@@ -200,4 +217,5 @@ fn main() {
     rect_example();
     alpha_example();
     circle_aa_example();
+    triangle_aa_example();
 }

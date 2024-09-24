@@ -37,13 +37,13 @@ impl<'b> Renderer<'b> {
         self.draw_horizontal_line_ptr = Self::m_draw_horizontal_line::<true>;
         self.draw_pixel_ptr = Self::m_draw_pixel::<true>;
         self.draw_pixel_unchecked_ptr = Self::m_draw_pixel_unchecked::<true>;
-        self.aa_color_ptr =  aa_color::<true>;
+        self.aa_color_ptr = aa_color::<true>;
     }
     pub fn end_blending(&mut self) {
         self.draw_horizontal_line_ptr = Self::m_draw_horizontal_line::<false>;
         self.draw_pixel_ptr = Self::m_draw_pixel::<false>;
         self.draw_pixel_unchecked_ptr = Self::m_draw_pixel_unchecked::<false>;
-        self.aa_color_ptr =  aa_color::<false>;
+        self.aa_color_ptr = aa_color::<false>;
     }
     #[inline]
     pub fn draw_horizontal_line(&mut self, x0: i32, x1: i32, y: i32, color: u32) {
@@ -151,6 +151,41 @@ impl<'b> Renderer<'b> {
             row += 1;
         }
     }
+    #[allow(clippy::too_many_arguments)]
+    pub fn fill_triangle_aa(
+        &mut self,
+        x0: i32,
+        y0: i32,
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+        color: u32,
+    ) {
+        let ((x_min, y_min), (x_max, y_max)) = triangle_bunding_box(x0, y0, x1, y1, x2, y2);
+        if let Some(((x_min, y_min), (x_max, y_max))) = normalize_rect(
+            x_min,
+            y_min,
+            x_max - x_min + 1,
+            y_max - y_min + 1,
+            self.width,
+            self.height,
+        ) {
+            let x0 = x0 as f32 + 0.5;
+            let y0 = y0 as f32 + 0.5;
+            let x1 = x1 as f32 + 0.5;
+            let y1 = y1 as f32 + 0.5;
+            let x2 = x2 as f32 + 0.5;
+            let y2 = y2 as f32 + 0.5;
+            for y in y_min..=y_max {
+                for x in x_min..=x_max {
+                    self.draw_pixel_unchecked_aa(x, y, color, |x, y| {
+                        xy_in_triangle(x, y, x0, y0, x1, y1, x2, y2)
+                    });
+                }
+            }
+        }
+    }
     pub fn fill_circle(&mut self, center_x: i32, center_y: i32, r: u31, color: u32) {
         if r == 0 {
             return;
@@ -251,20 +286,11 @@ impl<'b> Renderer<'b> {
             let center_y = center_y as f32 + 0.5;
             for y in y0..=y1 {
                 for x in x0..=x1 {
-                    let mut count_aa = 0;
-                    for sub_x in 1..=AA_RES {
-                        for sub_y in 1..=AA_RES {
-                            let x = x as f32 + sub_x as f32 * AA_PADDING;
-                            let y = y as f32 + sub_y as f32 * AA_PADDING;
-                            let dx = x - center_x;
-                            let dy = y - center_y;
-                            if dx * dx + dy * dy <= r * r {
-                                count_aa += 1;
-                            }
-                        }
-                    }
-                    let color = self.aa_color(count_aa, color);
-                    self.m_draw_pixel_unchecked::<true>(x as u31, y as u31, color);
+                    self.draw_pixel_unchecked_aa(x, y, color, |x, y|{
+                        let dx = x - center_x;
+                        let dy = y - center_y;
+                        dx * dx + dy * dy <= r * r
+                    });
                 }
             }
         }
@@ -273,7 +299,7 @@ impl<'b> Renderer<'b> {
         if let Some(((x0, y0), (x1, y1))) = normalize_rect(x0, y0, w, h, self.width, self.height) {
             for y in y0..=y1 {
                 for x in x0..=x1 {
-                    self.draw_pixel_unchecked(x as u31, y as u31, color);
+                    self.draw_pixel_unchecked(x, y, color);
                 }
             }
         }
@@ -324,6 +350,26 @@ impl<'b> Renderer<'b> {
     #[inline]
     fn aa_color(&self, count: u8, color: u32) -> u32 {
         (self.aa_color_ptr)(count, color)
+    }
+    fn draw_pixel_unchecked_aa(
+        &mut self,
+        x: u31,
+        y: u31,
+        color: u32,
+        condition: impl Fn(f32, f32) -> bool,
+    ) {
+        let mut count_aa = 0;
+        for sub_x in 1..=AA_RES {
+            for sub_y in 1..=AA_RES {
+                let x = x as f32 + sub_x as f32 * AA_PADDING;
+                let y = y as f32 + sub_y as f32 * AA_PADDING;
+                if condition(x, y) {
+                    count_aa += 1;
+                }
+            }
+        }
+        let color = self.aa_color(count_aa, color);
+        self.m_draw_pixel_unchecked::<true>(x as u31, y as u31, color);
     }
 }
 
@@ -569,21 +615,30 @@ fn aa_color<const BLENDING_ENABLED: bool>(count: u8, color: u32) -> u32 {
     color & 0x00ffffff | (alpha << (8 * 3))
 }
 
+/// ```
+/// if let Some((x0, y0), (x1, y1)) = normalize_rect(x, y, w, h, bound_width, bound_height) {
+///     for y in y0..=y1 {
+///         for x in x0..=x1 {
+///             // do things on (x, y)
+///         }
+///     }
+/// }
+/// ```
 fn normalize_rect(
-    x0: i32,
-    y0: i32,
+    x: i32,
+    y: i32,
     w: i32,
     h: i32,
     bound_width: u31,
     bound_height: u31,
-) -> Option<((i32, i32), (i32, i32))> {
+) -> Option<((u31, u31), (u31, u31))> {
     if w == 0 || h == 0 {
         return None;
     }
-    let x1 = if w > 0 { x0 + w - 1 } else { x0 + w + 1 };
-    let y1 = if h > 0 { y0 + h - 1 } else { y0 + h + 1 };
-    let mut x0 = x0.clamp(0, bound_width as i32 - 1);
-    let mut y0 = y0.clamp(0, bound_height as i32 - 1);
+    let x1 = if w > 0 { x + w - 1 } else { x + w + 1 };
+    let y1 = if h > 0 { y + h - 1 } else { y + h + 1 };
+    let mut x0 = x.clamp(0, bound_width as i32 - 1);
+    let mut y0 = y.clamp(0, bound_height as i32 - 1);
     let mut x1 = x1.clamp(0, bound_width as i32 - 1);
     let mut y1 = y1.clamp(0, bound_height as i32 - 1);
     if x1 < x0 {
@@ -592,5 +647,55 @@ fn normalize_rect(
     if y1 < y0 {
         std::mem::swap(&mut y0, &mut y1);
     }
-    Some(((x0, y0), (x1, y1)))
+    Some(((x0 as u31, y0 as u31), (x1 as u31, y1 as u31)))
+}
+
+fn triangle_bunding_box(
+    mut x0: i32,
+    mut y0: i32,
+    mut x1: i32,
+    mut y1: i32,
+    mut x2: i32,
+    mut y2: i32,
+) -> ((i32, i32), (i32, i32)) {
+    if x0 > x1 {
+        std::mem::swap(&mut x0, &mut x1);
+    }
+    if x1 > x2 {
+        std::mem::swap(&mut x1, &mut x2);
+    }
+    if x0 > x1 {
+        std::mem::swap(&mut x0, &mut x1);
+    }
+
+    if y0 > y1 {
+        std::mem::swap(&mut y0, &mut y1);
+    }
+    if y1 > y2 {
+        std::mem::swap(&mut y1, &mut y2);
+    }
+    if y0 > y1 {
+        std::mem::swap(&mut y0, &mut y1);
+    }
+
+    ((x0, y0), (x2, y2))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn xy_in_triangle(x: f32, y: f32, x0: f32, y0: f32, x1: f32, y1: f32, x2: f32, y2: f32) -> bool {
+    // Barycentric coordinate system
+    // https://github.com/ssloy/tinyrenderer/wiki/Lesson-2:-Triangle-rasterization-and-back-face-culling#:~:text=It%20means%20that%20we%20are%20looking%20for%20a%20vector%20(u%2Cv%2C1)%20that%20is%20orthogonal%20to%20(ABx%2CACx%2CPAx)%20and%20(ABy%2CACy%2CPAy)%20at%20the%20same%20time!
+    let (x, y, z) = vector3_a_cross_b(x1 - x0, x2 - x0, x0 - x, y1 - y0, y2 - y0, y0 - y);
+    let u = x / z;
+    let v = y / z;
+    let w = 1.0 - u - v;
+    u >= 0.0 && v >= 0.0 && w >= 0.0
+}
+
+// return (x, y, z)
+fn vector3_a_cross_b(ax: f32, ay: f32, az: f32, bx: f32, by: f32, bz: f32) -> (f32, f32, f32) {
+    let x = ay * bz - az * by;
+    let y = az * bx - ax * bz;
+    let z = ax * by - ay * bx;
+    (x, y, z)
 }
