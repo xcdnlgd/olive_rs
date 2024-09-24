@@ -7,6 +7,9 @@ use std::{
 #[allow(non_camel_case_types)]
 pub type u31 = u32;
 
+const AA_RES: i32 = 2;
+const AA_PADDING: f32 = 1f32 / (AA_RES + 1) as f32;
+
 pub struct Renderer<'b> {
     buffer: &'b mut [u32],
     pub width: u31,
@@ -14,6 +17,7 @@ pub struct Renderer<'b> {
     draw_horizontal_line_ptr: fn(&mut Self, x0: i32, x1: i32, y: i32, color: u32),
     draw_pixel_ptr: fn(&mut Self, x: i32, y: i32, color: u32),
     draw_pixel_unchecked_ptr: fn(&mut Self, x: u31, y: u31, color: u32),
+    aa_color_ptr: fn(count: u8, color: u32) -> u32,
 }
 impl<'b> Renderer<'b> {
     pub fn new(buffer: &'b mut [u32], width: u31, height: u31) -> Self {
@@ -26,17 +30,20 @@ impl<'b> Renderer<'b> {
             draw_horizontal_line_ptr: Self::m_draw_horizontal_line::<BLENDING_ENABLED>,
             draw_pixel_ptr: Self::m_draw_pixel::<BLENDING_ENABLED>,
             draw_pixel_unchecked_ptr: Self::m_draw_pixel_unchecked::<BLENDING_ENABLED>,
+            aa_color_ptr: aa_color::<BLENDING_ENABLED>,
         }
     }
     pub fn begin_blending(&mut self) {
         self.draw_horizontal_line_ptr = Self::m_draw_horizontal_line::<true>;
         self.draw_pixel_ptr = Self::m_draw_pixel::<true>;
         self.draw_pixel_unchecked_ptr = Self::m_draw_pixel_unchecked::<true>;
+        self.aa_color_ptr =  aa_color::<true>;
     }
     pub fn end_blending(&mut self) {
         self.draw_horizontal_line_ptr = Self::m_draw_horizontal_line::<false>;
         self.draw_pixel_ptr = Self::m_draw_pixel::<false>;
         self.draw_pixel_unchecked_ptr = Self::m_draw_pixel_unchecked::<false>;
+        self.aa_color_ptr =  aa_color::<false>;
     }
     #[inline]
     pub fn draw_horizontal_line(&mut self, x0: i32, x1: i32, y: i32, color: u32) {
@@ -152,7 +159,7 @@ impl<'b> Renderer<'b> {
             self.draw_pixel(center_x, center_y, color);
             return;
         }
-        let r = r as i32 - 1;
+        let r = r as i32;
 
         if center_x + r < 0
             || center_y + r < 0
@@ -186,8 +193,18 @@ impl<'b> Renderer<'b> {
             // avoid draw multiple times
             if y0 != last_y {
                 let last_x = x0 - 1;
-                self.draw_horizontal_line(center_x - last_x, center_x + last_x, center_y + last_y, color);
-                self.draw_horizontal_line(center_x - last_x, center_x + last_x, center_y - last_y, color);
+                self.draw_horizontal_line(
+                    center_x - last_x,
+                    center_x + last_x,
+                    center_y + last_y,
+                    color,
+                );
+                self.draw_horizontal_line(
+                    center_x - last_x,
+                    center_x + last_x,
+                    center_y - last_y,
+                    color,
+                );
                 last_y = y0;
             }
             self.draw_horizontal_line(center_x - y0, center_x + y0, center_y + x0, color);
@@ -206,28 +223,58 @@ impl<'b> Renderer<'b> {
             // the missing y have been drawn by last x
             return;
         }
-        self.draw_horizontal_line(center_x - last_x, center_x + last_x, center_y + last_y, color);
-        self.draw_horizontal_line(center_x - last_x, center_x + last_x, center_y - last_y, color);
+        self.draw_horizontal_line(
+            center_x - last_x,
+            center_x + last_x,
+            center_y + last_y,
+            color,
+        );
+        self.draw_horizontal_line(
+            center_x - last_x,
+            center_x + last_x,
+            center_y - last_y,
+            color,
+        );
+    }
+    pub fn fill_cirle_aa(&mut self, center_x: i32, center_y: i32, r: u31, color: u32) {
+        let r = r as i32;
+        if let Some(((x0, y0), (x1, y1))) = normalize_rect(
+            center_x - r,
+            center_y - r,
+            2 * r + 1,
+            2 * r + 1,
+            self.width,
+            self.height,
+        ) {
+            let r = r as f32;
+            let center_x = center_x as f32 + 0.5;
+            let center_y = center_y as f32 + 0.5;
+            for y in y0..=y1 {
+                for x in x0..=x1 {
+                    let mut count_aa = 0;
+                    for sub_x in 1..=AA_RES {
+                        for sub_y in 1..=AA_RES {
+                            let x = x as f32 + sub_x as f32 * AA_PADDING;
+                            let y = y as f32 + sub_y as f32 * AA_PADDING;
+                            let dx = x - center_x;
+                            let dy = y - center_y;
+                            if dx * dx + dy * dy <= r * r {
+                                count_aa += 1;
+                            }
+                        }
+                    }
+                    let color = self.aa_color(count_aa, color);
+                    self.m_draw_pixel_unchecked::<true>(x as u31, y as u31, color);
+                }
+            }
+        }
     }
     pub fn fill_rect(&mut self, x0: i32, y0: i32, w: i32, h: i32, color: u32) {
-        if w == 0 || h == 0 {
-            return;
-        }
-        let x1 = if w > 0 { x0 + w - 1 } else { x0 + w + 1 };
-        let y1 = if h > 0 { y0 + h - 1 } else { y0 + h + 1 };
-        let mut x0 = x0.clamp(0, self.width as i32 - 1) as u31;
-        let mut y0 = y0.clamp(0, self.height as i32 - 1) as u31;
-        let mut x1 = x1.clamp(0, self.width as i32 - 1) as u31;
-        let mut y1 = y1.clamp(0, self.height as i32 - 1) as u31;
-        if x1 < x0 {
-            std::mem::swap(&mut x0, &mut x1);
-        }
-        if y1 < y0 {
-            std::mem::swap(&mut y0, &mut y1);
-        }
-        for y in y0..=y1 {
-            for x in x0..=x1 {
-                self.draw_pixel_unchecked(x as u31, y as u31, color);
+        if let Some(((x0, y0), (x1, y1))) = normalize_rect(x0, y0, w, h, self.width, self.height) {
+            for y in y0..=y1 {
+                for x in x0..=x1 {
+                    self.draw_pixel_unchecked(x as u31, y as u31, color);
+                }
             }
         }
     }
@@ -273,6 +320,10 @@ impl<'b> Renderer<'b> {
         } else {
             self.buffer[(y * self.width + x) as usize] = color;
         }
+    }
+    #[inline]
+    fn aa_color(&self, count: u8, color: u32) -> u32 {
+        (self.aa_color_ptr)(count, color)
     }
 }
 
@@ -505,4 +556,41 @@ fn blend_color(bottom_color: &mut u32, top_color: u32) {
     for (i, bottom_color_component) in bottom_color_components.iter().enumerate().take(3) {
         *bottom_color |= (*bottom_color_component as u32) << (8 * i);
     }
+}
+
+fn aa_color<const BLENDING_ENABLED: bool>(count: u8, color: u32) -> u32 {
+    let old_alpha = if BLENDING_ENABLED {
+        color >> (8 * 3) & 0xff
+    } else {
+        255
+    } as f32;
+    let t = count as f32 / (AA_RES * AA_RES) as f32;
+    let alpha = (t * old_alpha) as u32;
+    color & 0x00ffffff | (alpha << (8 * 3))
+}
+
+fn normalize_rect(
+    x0: i32,
+    y0: i32,
+    w: i32,
+    h: i32,
+    bound_width: u31,
+    bound_height: u31,
+) -> Option<((i32, i32), (i32, i32))> {
+    if w == 0 || h == 0 {
+        return None;
+    }
+    let x1 = if w > 0 { x0 + w - 1 } else { x0 + w + 1 };
+    let y1 = if h > 0 { y0 + h - 1 } else { y0 + h + 1 };
+    let mut x0 = x0.clamp(0, bound_width as i32 - 1);
+    let mut y0 = y0.clamp(0, bound_height as i32 - 1);
+    let mut x1 = x1.clamp(0, bound_width as i32 - 1);
+    let mut y1 = y1.clamp(0, bound_height as i32 - 1);
+    if x1 < x0 {
+        std::mem::swap(&mut x0, &mut x1);
+    }
+    if y1 < y0 {
+        std::mem::swap(&mut y0, &mut y1);
+    }
+    Some(((x0, y0), (x1, y1)))
 }
