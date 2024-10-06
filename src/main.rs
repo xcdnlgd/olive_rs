@@ -209,6 +209,20 @@ fn triangle_aa_example() {
     renderer.save_to_ppm_file(file).unwrap();
 }
 
+fn text_example() {
+    let mut buffer = [0u32; BUFFER_LEN];
+    let mut renderer = Renderer::new(&mut buffer, WIDTH, HEIGHT);
+    let file = "text.ppm";
+    renderer.fill(BACKGROUND_COLOR);
+    renderer.fill_text("the quick brown fox jumps over the lazy dog", 0, 0, 3, 0xFFFFFFFF);
+    renderer.fill_text("THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG", 0, 40, 3, 0xFFFFFFFF);
+    renderer.fill_text("\"\'hello, world.!\'\"", 0, 80, 3, 0xFFFFFFFF);
+    renderer.fill_text("0123456789", 0, 120, 3, 0xFFFFFFFF);
+    renderer.fill_text("urmom?", 0, 160, 3, 0xFFFFFFFF);
+
+    renderer.save_to_ppm_file(file).unwrap();
+}
+
 fn main() {
     checker_example();
     circle_example();
@@ -218,4 +232,5 @@ fn main() {
     alpha_example();
     circle_aa_example();
     triangle_aa_example();
+    text_example();
 }
