@@ -1,14 +1,14 @@
-use olive_rs::renderer::{u31, Renderer};
+use olive_rs::renderer::Renderer;
 
-const WIDTH: u31 = 800;
-const HEIGHT: u31 = 600;
+const WIDTH: u32 = 800;
+const HEIGHT: u32 = 600;
 const BUFFER_LEN: usize = (WIDTH * HEIGHT) as usize;
 
-const COLS: u31 = 8;
-const ROWS: u31 = 6;
+const COLS: u32 = 8;
+const ROWS: u32 = 6;
 
-const CELL_WIDTH: u31 = WIDTH / COLS;
-const CELL_HEIGHT: u31 = HEIGHT / ROWS;
+const CELL_WIDTH: u32 = WIDTH / COLS;
+const CELL_HEIGHT: u32 = HEIGHT / ROWS;
 
 const BACKGROUND_COLOR: u32 = 0xff_202020;
 const FOREGROUND_COLOR: u32 = 0xff_0000ff;
@@ -19,7 +19,7 @@ const BLUE: u32 = 0xff_ff0000;
 fn checker_example() {
     let mut buffer = [0u32; BUFFER_LEN];
     let mut renderer = Renderer::new(&mut buffer, WIDTH, HEIGHT);
-    let file = "checher.ppm";
+    let file = "output/checher.ppm";
     renderer.fill(BACKGROUND_COLOR);
     for y in 0..ROWS {
         for x in 0..COLS {
@@ -43,7 +43,7 @@ fn checker_example() {
 }
 
 fn rect_example() {
-    let file = "rect.ppm";
+    let file = "output/rect.ppm";
     let mut buffer = [0u32; BUFFER_LEN];
     let mut renderer = Renderer::new(&mut buffer, WIDTH, HEIGHT);
     renderer.fill(BACKGROUND_COLOR);
@@ -61,7 +61,7 @@ fn rect_example() {
 }
 
 fn alpha_example() {
-    let file = "alpha.ppm";
+    let file = "output/alpha.ppm";
     let mut buffer = [0u32; BUFFER_LEN];
     let mut renderer = Renderer::new(&mut buffer, WIDTH, HEIGHT);
     renderer.fill(BACKGROUND_COLOR);
@@ -99,7 +99,7 @@ fn lerp(a: f32, b: f32, t: f32) -> f32 {
 fn circle_example() {
     let mut buffer = [0u32; BUFFER_LEN];
     let mut renderer = Renderer::new(&mut buffer, WIDTH, HEIGHT);
-    let file = "circle.ppm";
+    let file = "output/circle.ppm";
     renderer.fill(BACKGROUND_COLOR);
     let r = CELL_HEIGHT.min(CELL_WIDTH) / 2;
     for y in 0..ROWS {
@@ -112,7 +112,7 @@ fn circle_example() {
             renderer.fill_circle(
                 (x * CELL_WIDTH + CELL_WIDTH / 2) as i32,
                 (y * CELL_HEIGHT + CELL_HEIGHT / 2) as i32,
-                r as u31,
+                r as u32,
                 FOREGROUND_COLOR,
             );
         }
@@ -123,7 +123,7 @@ fn circle_example() {
 fn line_example() {
     let mut buffer = [0u32; BUFFER_LEN];
     let mut renderer = Renderer::new(&mut buffer, WIDTH, HEIGHT);
-    let file = "line.ppm";
+    let file = "output/line.ppm";
     renderer.fill(BACKGROUND_COLOR);
     renderer.draw_line(0, 0, WIDTH as i32, HEIGHT as i32, FOREGROUND_COLOR);
     renderer.draw_line(WIDTH as i32, 0, 0, HEIGHT as i32, FOREGROUND_COLOR);
@@ -147,7 +147,7 @@ fn line_example() {
 fn triangle_example() {
     let mut buffer = [0u32; BUFFER_LEN];
     let mut renderer = Renderer::new(&mut buffer, WIDTH, HEIGHT);
-    let file = "triangle.ppm";
+    let file = "output/triangle.ppm";
     renderer.fill(BACKGROUND_COLOR);
     renderer.fill_triangle(10, 10, 80, 10, 10, 80, FOREGROUND_COLOR);
     renderer.fill_triangle(80, 10, 10, 80, 80, 80, FOREGROUND_COLOR);
@@ -184,7 +184,7 @@ fn triangle_example() {
 fn circle_aa_example() {
     let mut buffer = [0u32; BUFFER_LEN];
     let mut renderer = Renderer::new(&mut buffer, WIDTH, HEIGHT);
-    let file = "circle_aa.ppm";
+    let file = "output/circle_aa.ppm";
     renderer.fill(BACKGROUND_COLOR);
     renderer.begin_blending();
     renderer.fill_circle_aa(WIDTH as i32 / 2, HEIGHT as i32 / 2, 100, RED);
@@ -195,7 +195,7 @@ fn circle_aa_example() {
 fn triangle_aa_example() {
     let mut buffer = [0u32; BUFFER_LEN];
     let mut renderer = Renderer::new(&mut buffer, WIDTH, HEIGHT);
-    let file = "triangle_aa.ppm";
+    let file = "output/triangle_aa.ppm";
     renderer.fill(BACKGROUND_COLOR);
     renderer.fill_triangle_aa(
         WIDTH as i32 / 2,
@@ -212,13 +212,37 @@ fn triangle_aa_example() {
 fn text_example() {
     let mut buffer = [0u32; BUFFER_LEN];
     let mut renderer = Renderer::new(&mut buffer, WIDTH, HEIGHT);
-    let file = "text.ppm";
+    let file = "output/text.ppm";
     renderer.fill(BACKGROUND_COLOR);
-    renderer.fill_text("the quick brown fox jumps over the lazy dog", 0, 0, 3, 0xFFFFFFFF);
-    renderer.fill_text("THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG", 0, 40, 3, 0xFFFFFFFF);
+    renderer.fill_text(
+        "the quick brown fox jumps over the lazy dog",
+        0,
+        0,
+        3,
+        0xFFFFFFFF,
+    );
+    renderer.fill_text(
+        "THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG",
+        0,
+        40,
+        3,
+        0xFFFFFFFF,
+    );
     renderer.fill_text("\"\'hello, world.!\'\"", 0, 80, 3, 0xFFFFFFFF);
     renderer.fill_text("0123456789", 0, 120, 3, 0xFFFFFFFF);
     renderer.fill_text("urmom?", 0, 160, 3, 0xFFFFFFFF);
+
+    renderer.save_to_ppm_file(file).unwrap();
+}
+
+fn sub_canvas_example() {
+    let mut buffer = [0u32; BUFFER_LEN];
+    let mut renderer = Renderer::new(&mut buffer, WIDTH, HEIGHT);
+    let file = "output/sub_canvas.ppm";
+    renderer.fill(BACKGROUND_COLOR);
+
+    let mut sub_canvas = Renderer::sub_canvas(renderer.get_buffer_mut(), 15, 15, 50, 50, WIDTH);
+    sub_canvas.fill_circle(15, 15, 30, FOREGROUND_COLOR);
 
     renderer.save_to_ppm_file(file).unwrap();
 }
@@ -233,4 +257,5 @@ fn main() {
     circle_aa_example();
     triangle_aa_example();
     text_example();
+    sub_canvas_example();
 }

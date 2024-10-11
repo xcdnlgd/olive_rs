@@ -6,34 +6,51 @@ use std::{
 
 use phf::phf_map;
 
-#[allow(non_camel_case_types)]
-pub type u31 = u32;
-
 const AA_RES: i32 = 2;
 const AA_PADDING: f32 = 1f32 / (AA_RES + 1) as f32;
 
 pub struct Renderer<'b> {
     buffer: &'b mut [u32],
-    pub width: u31,
-    pub height: u31,
+    pub width: u32,
+    pub height: u32,
+    pub stride: u32,
     draw_horizontal_line_ptr: fn(&mut Self, x0: i32, x1: i32, y: i32, color: u32),
-    draw_pixel_unchecked_ptr: fn(&mut Self, x: u31, y: u31, color: u32),
+    draw_pixel_unchecked_ptr: fn(&mut Self, x: u32, y: u32, color: u32),
     aa_color_ptr: fn(count: u8, color: u32) -> u32,
 }
 impl<'b> Renderer<'b> {
-    pub fn new(buffer: &'b mut [u32], width: u31, height: u31) -> Self {
+    pub fn new(buffer: &'b mut [u32], width: u32, height: u32) -> Self {
         assert_eq!((width * height) as usize, buffer.len());
         const BLENDING_ENABLED: bool = false;
         Self {
             buffer,
             width,
             height,
+            stride: width,
+            draw_horizontal_line_ptr: Self::m_draw_horizontal_line::<BLENDING_ENABLED>,
+            draw_pixel_unchecked_ptr: Self::m_draw_pixel_unchecked::<BLENDING_ENABLED>,
+            aa_color_ptr: aa_color::<BLENDING_ENABLED>,
+        }
+    }
+    // TODO: when the borrower checker get smarter, receive &'b mut self
+    // now use let sub = Renderer::sub_canvas(renderer.get_buffer_mut(), 15, 15, 50, 50, BUFFER_WIDTH);
+    pub fn sub_canvas(buffer: &'b mut [u32], x: u32, y: u32, width: u32, height: u32, stride: u32) -> Self {
+        let start_index = (y * stride + x) as usize;
+        const BLENDING_ENABLED: bool = false;
+        Self {
+            buffer: &mut buffer[start_index..],
+            width,
+            height,
+            stride,
             draw_horizontal_line_ptr: Self::m_draw_horizontal_line::<BLENDING_ENABLED>,
             draw_pixel_unchecked_ptr: Self::m_draw_pixel_unchecked::<BLENDING_ENABLED>,
             aa_color_ptr: aa_color::<BLENDING_ENABLED>,
         }
     }
     pub fn get_buffer(&self) -> &[u32] {
+        self.buffer
+    }
+    pub fn get_buffer_mut(&mut self) -> &mut [u32] {
         self.buffer
     }
     pub fn begin_blending(&mut self) {
@@ -67,12 +84,12 @@ impl<'b> Renderer<'b> {
             return;
         }
         x1 += 1;
-        if 0 <= y && (y as u31) < self.height {
-            let y = y as u31;
-            let x0 = x0.max(0) as u31;
-            let xn = (x1 as u31).min(self.width);
-            let start_i = (y * self.width + x0) as usize;
-            let end_i = (y * self.width + xn) as usize;
+        if 0 <= y && (y as u32) < self.height {
+            let y = y as u32;
+            let x0 = x0.max(0) as u32;
+            let xn = (x1 as u32).min(self.width);
+            let start_i = (y * self.stride + x0) as usize;
+            let end_i = (y * self.stride + xn) as usize;
             self.buffer[start_i..end_i].iter_mut().for_each(|pixel| {
                 if BLENDING_ENABLED {
                     blend_color(pixel, color);
@@ -99,12 +116,12 @@ impl<'b> Renderer<'b> {
         } else {
             return;
         };
-        self.draw_pixel_unchecked(x1 as u31, y1 as u31, color);
+        self.draw_pixel_unchecked(x1 as u32, y1 as u32, color);
 
         let mut ray = Ray::new(x0, y0, x1, y1);
         while !ray.reached {
             let (x, y) = ray.next_xy();
-            self.draw_pixel_unchecked(x as u31, y as u31, color)
+            self.draw_pixel_unchecked(x as u32, y as u32, color)
         }
     }
     pub fn fill(&mut self, color: u32) {
@@ -190,7 +207,7 @@ impl<'b> Renderer<'b> {
             }
         }
     }
-    pub fn fill_circle(&mut self, center_x: i32, center_y: i32, r: u31, color: u32) {
+    pub fn fill_circle(&mut self, center_x: i32, center_y: i32, r: u32, color: u32) {
         if r == 0 {
             return;
         }
@@ -275,7 +292,7 @@ impl<'b> Renderer<'b> {
             color,
         );
     }
-    pub fn fill_circle_aa(&mut self, center_x: i32, center_y: i32, r: u31, color: u32) {
+    pub fn fill_circle_aa(&mut self, center_x: i32, center_y: i32, r: u32, color: u32) {
         let r = r as i32;
         if let Some(((x0, y0), (x1, y1))) = normalize_rect(
             center_x - r,
@@ -346,21 +363,21 @@ impl<'b> Renderer<'b> {
         if x < 0 || y < 0 {
             return;
         }
-        let x = x as u31;
-        let y = y as u31;
+        let x = x as u32;
+        let y = y as u32;
         if x < self.width && y < self.height {
             self.draw_pixel_unchecked(x, y, color);
         }
     }
     #[inline]
-    fn draw_pixel_unchecked(&mut self, x: u31, y: u31, color: u32) {
+    fn draw_pixel_unchecked(&mut self, x: u32, y: u32, color: u32) {
         (self.draw_pixel_unchecked_ptr)(self, x, y, color);
     }
-    fn m_draw_pixel_unchecked<const BLENDING_ENABLED: bool>(&mut self, x: u31, y: u31, color: u32) {
+    fn m_draw_pixel_unchecked<const BLENDING_ENABLED: bool>(&mut self, x: u32, y: u32, color: u32) {
         if BLENDING_ENABLED {
-            blend_color(&mut self.buffer[(y * self.width + x) as usize], color);
+            blend_color(&mut self.buffer[(y * self.stride + x) as usize], color);
         } else {
-            self.buffer[(y * self.width + x) as usize] = color;
+            self.buffer[(y * self.stride + x) as usize] = color;
         }
     }
     #[inline]
@@ -369,8 +386,8 @@ impl<'b> Renderer<'b> {
     }
     fn draw_pixel_unchecked_aa(
         &mut self,
-        x: u31,
-        y: u31,
+        x: u32,
+        y: u32,
         color: u32,
         condition: impl Fn(f32, f32) -> bool,
     ) {
@@ -385,7 +402,7 @@ impl<'b> Renderer<'b> {
             }
         }
         let color = self.aa_color(count_aa, color);
-        self.m_draw_pixel_unchecked::<true>(x as u31, y as u31, color);
+        self.m_draw_pixel_unchecked::<true>(x as u32, y as u32, color);
     }
 }
 
@@ -1345,9 +1362,9 @@ fn normalize_rect(
     y: i32,
     w: i32,
     h: i32,
-    bound_width: u31,
-    bound_height: u31,
-) -> Option<((u31, u31), (u31, u31))> {
+    bound_width: u32,
+    bound_height: u32,
+) -> Option<((u32, u32), (u32, u32))> {
     if w == 0 || h == 0 {
         return None;
     }
@@ -1363,7 +1380,7 @@ fn normalize_rect(
     if y1 < y0 {
         std::mem::swap(&mut y0, &mut y1);
     }
-    Some(((x0 as u31, y0 as u31), (x1 as u31, y1 as u31)))
+    Some(((x0 as u32, y0 as u32), (x1 as u32, y1 as u32)))
 }
 
 fn triangle_bunding_box(
