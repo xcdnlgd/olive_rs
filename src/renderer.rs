@@ -14,9 +14,10 @@ pub struct Renderer<'b> {
     pub width: u32,
     pub height: u32,
     pub stride: u32,
-    draw_horizontal_line_unchecked_ptr: fn(&mut Self, x0: u32, x1: u32, y: u32, color: u32),
-    draw_pixel_unchecked_ptr: fn(&mut Self, x: u32, y: u32, color: u32),
-    aa_color_ptr: fn(count: u8, color: u32) -> u32,
+    draw_horizontal_line_unchecked_fn: fn(&mut Self, x0: u32, x1: u32, y: u32, color: u32),
+    draw_pixel_unchecked_fn: fn(&mut Self, x: u32, y: u32, color: u32),
+    copy_fn: fn(this: &mut Self, source: &Self),
+    aa_color_fn: fn(count: u8, color: u32) -> u32,
 }
 impl<'b> Renderer<'b> {
     pub fn new(buffer: &'b mut [u32], width: u32, height: u32) -> Self {
@@ -27,11 +28,12 @@ impl<'b> Renderer<'b> {
             width,
             height,
             stride: width,
-            draw_horizontal_line_unchecked_ptr: Self::m_draw_horizontal_line_unchecked::<
+            draw_horizontal_line_unchecked_fn: Self::m_draw_horizontal_line_unchecked::<
                 BLENDING_ENABLED,
             >,
-            draw_pixel_unchecked_ptr: Self::m_draw_pixel_unchecked::<BLENDING_ENABLED>,
-            aa_color_ptr: aa_color::<BLENDING_ENABLED>,
+            draw_pixel_unchecked_fn: Self::m_draw_pixel_unchecked::<BLENDING_ENABLED>,
+            copy_fn: Self::m_copy::<BLENDING_ENABLED>,
+            aa_color_fn: aa_color::<BLENDING_ENABLED>,
         }
     }
     // TODO: when the borrower checker get smarter, receive &'b mut self
@@ -57,11 +59,12 @@ impl<'b> Renderer<'b> {
             width,
             height,
             stride,
-            draw_horizontal_line_unchecked_ptr: Self::m_draw_horizontal_line_unchecked::<
+            draw_horizontal_line_unchecked_fn: Self::m_draw_horizontal_line_unchecked::<
                 BLENDING_ENABLED,
             >,
-            draw_pixel_unchecked_ptr: Self::m_draw_pixel_unchecked::<BLENDING_ENABLED>,
-            aa_color_ptr: aa_color::<BLENDING_ENABLED>,
+            draw_pixel_unchecked_fn: Self::m_draw_pixel_unchecked::<BLENDING_ENABLED>,
+            copy_fn: Self::m_copy::<BLENDING_ENABLED>,
+            aa_color_fn: aa_color::<BLENDING_ENABLED>,
         }
     }
     pub fn get_buffer(&self) -> &[u32] {
@@ -85,16 +88,22 @@ impl<'b> Renderer<'b> {
         &mut self.buffer[start..end]
     }
     pub fn begin_blending(&mut self) {
-        self.draw_horizontal_line_unchecked_ptr = Self::m_draw_horizontal_line_unchecked::<true>;
-        self.draw_pixel_unchecked_ptr = Self::m_draw_pixel_unchecked::<true>;
-        self.aa_color_ptr = aa_color::<true>;
+        self.draw_horizontal_line_unchecked_fn = Self::m_draw_horizontal_line_unchecked::<true>;
+        self.draw_pixel_unchecked_fn = Self::m_draw_pixel_unchecked::<true>;
+        self.copy_fn = Self::m_copy::<true>;
+        self.aa_color_fn = aa_color::<true>;
     }
     pub fn end_blending(&mut self) {
-        self.draw_horizontal_line_unchecked_ptr = Self::m_draw_horizontal_line_unchecked::<false>;
-        self.draw_pixel_unchecked_ptr = Self::m_draw_pixel_unchecked::<false>;
-        self.aa_color_ptr = aa_color::<false>;
+        self.draw_horizontal_line_unchecked_fn = Self::m_draw_horizontal_line_unchecked::<false>;
+        self.draw_pixel_unchecked_fn = Self::m_draw_pixel_unchecked::<false>;
+        self.copy_fn = Self::m_copy::<false>;
+        self.aa_color_fn = aa_color::<false>;
     }
+    #[inline]
     pub fn copy(&mut self, source: &Self) {
+        (self.copy_fn)(self, source);
+    }
+    fn m_copy<const BLENDING_ENABLED: bool>(&mut self, source: &Self) {
         let w = self.width as usize;
         let h = self.height as usize;
         let sw = source.width as usize;
@@ -107,7 +116,11 @@ impl<'b> Renderer<'b> {
                 .enumerate()
                 .for_each(|(x, pixel)| {
                     let sx = x * sw / w;
-                    *pixel = source.buffer[start + sx];
+                    if BLENDING_ENABLED {
+                        blend_color(pixel, source.buffer[start + sx]);
+                    } else {
+                        *pixel = source.buffer[start + sx];
+                    }
                 });
         }
     }
@@ -131,7 +144,7 @@ impl<'b> Renderer<'b> {
     }
     #[inline]
     pub fn draw_horizontal_line_unchecked(&mut self, x0: u32, x1: u32, y: u32, color: u32) {
-        (self.draw_horizontal_line_unchecked_ptr)(self, x0, x1, y, color);
+        (self.draw_horizontal_line_unchecked_fn)(self, x0, x1, y, color);
     }
     fn m_draw_horizontal_line_unchecked<const BLENDING_ENABLED: bool>(
         &mut self,
@@ -423,7 +436,7 @@ impl<'b> Renderer<'b> {
     }
     #[inline]
     fn draw_pixel_unchecked(&mut self, x: u32, y: u32, color: u32) {
-        (self.draw_pixel_unchecked_ptr)(self, x, y, color);
+        (self.draw_pixel_unchecked_fn)(self, x, y, color);
     }
     fn m_draw_pixel_unchecked<const BLENDING_ENABLED: bool>(&mut self, x: u32, y: u32, color: u32) {
         if BLENDING_ENABLED {
@@ -434,7 +447,7 @@ impl<'b> Renderer<'b> {
     }
     #[inline]
     fn aa_color(&self, count: u8, color: u32) -> u32 {
-        (self.aa_color_ptr)(count, color)
+        (self.aa_color_fn)(count, color)
     }
     fn draw_pixel_unchecked_aa(
         &mut self,
