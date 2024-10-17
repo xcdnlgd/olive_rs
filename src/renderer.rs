@@ -14,7 +14,7 @@ pub struct Renderer<'b> {
     pub width: u32,
     pub height: u32,
     pub stride: u32,
-    draw_horizontal_line_ptr: fn(&mut Self, x0: i32, x1: i32, y: i32, color: u32),
+    draw_horizontal_line_unchecked_ptr: fn(&mut Self, x0: u32, x1: u32, y: u32, color: u32),
     draw_pixel_unchecked_ptr: fn(&mut Self, x: u32, y: u32, color: u32),
     aa_color_ptr: fn(count: u8, color: u32) -> u32,
 }
@@ -27,14 +27,29 @@ impl<'b> Renderer<'b> {
             width,
             height,
             stride: width,
-            draw_horizontal_line_ptr: Self::m_draw_horizontal_line::<BLENDING_ENABLED>,
+            draw_horizontal_line_unchecked_ptr: Self::m_draw_horizontal_line_unchecked::<
+                BLENDING_ENABLED,
+            >,
             draw_pixel_unchecked_ptr: Self::m_draw_pixel_unchecked::<BLENDING_ENABLED>,
             aa_color_ptr: aa_color::<BLENDING_ENABLED>,
         }
     }
     // TODO: when the borrower checker get smarter, receive &'b mut self
-    // now use let sub = Renderer::sub_canvas(renderer.get_buffer_mut(), 15, 15, 50, 50, BUFFER_WIDTH);
-    pub fn sub_canvas(buffer: &'b mut [u32], x: u32, y: u32, width: u32, height: u32, stride: u32) -> Self {
+    // now use let sub = Renderer::sub_canvas(renderer.get_buffer_mut(), 15, 15, 50, 50, BUFFER_WIDTH, BUFFER_HEIGHT);
+    pub fn sub_canvas(
+        buffer: &'b mut [u32],
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+        buffer_width: u32,
+        buffer_height: u32,
+    ) -> Self {
+        assert!(x < buffer_width);
+        assert!(x + width <= buffer_width);
+        assert!(y < buffer_height);
+        assert!(y + height <= buffer_height);
+        let stride = buffer_width;
         let start_index = (y * stride + x) as usize;
         const BLENDING_ENABLED: bool = false;
         Self {
@@ -42,7 +57,9 @@ impl<'b> Renderer<'b> {
             width,
             height,
             stride,
-            draw_horizontal_line_ptr: Self::m_draw_horizontal_line::<BLENDING_ENABLED>,
+            draw_horizontal_line_unchecked_ptr: Self::m_draw_horizontal_line_unchecked::<
+                BLENDING_ENABLED,
+            >,
             draw_pixel_unchecked_ptr: Self::m_draw_pixel_unchecked::<BLENDING_ENABLED>,
             aa_color_ptr: aa_color::<BLENDING_ENABLED>,
         }
@@ -53,27 +70,48 @@ impl<'b> Renderer<'b> {
     pub fn get_buffer_mut(&mut self) -> &mut [u32] {
         self.buffer
     }
+    pub fn get_row_unchecked(&self, y: u32) -> &[u32] {
+        let start = y * self.stride;
+        let end = start + self.width;
+        let start = start as usize;
+        let end = end as usize;
+        &self.buffer[start..end]
+    }
+    pub fn get_row_mut_unchecked(&mut self, y: u32) -> &mut [u32] {
+        let start = y * self.stride;
+        let end = start + self.width;
+        let start = start as usize;
+        let end = end as usize;
+        &mut self.buffer[start..end]
+    }
     pub fn begin_blending(&mut self) {
-        self.draw_horizontal_line_ptr = Self::m_draw_horizontal_line::<true>;
+        self.draw_horizontal_line_unchecked_ptr = Self::m_draw_horizontal_line_unchecked::<true>;
         self.draw_pixel_unchecked_ptr = Self::m_draw_pixel_unchecked::<true>;
         self.aa_color_ptr = aa_color::<true>;
     }
     pub fn end_blending(&mut self) {
-        self.draw_horizontal_line_ptr = Self::m_draw_horizontal_line::<false>;
+        self.draw_horizontal_line_unchecked_ptr = Self::m_draw_horizontal_line_unchecked::<false>;
         self.draw_pixel_unchecked_ptr = Self::m_draw_pixel_unchecked::<false>;
         self.aa_color_ptr = aa_color::<false>;
     }
-    #[inline]
-    pub fn draw_horizontal_line(&mut self, x0: i32, x1: i32, y: i32, color: u32) {
-        (self.draw_horizontal_line_ptr)(self, x0, x1, y, color);
+    pub fn copy(&mut self, source: &Self) {
+        let w = self.width as usize;
+        let h = self.height as usize;
+        let sw = source.width as usize;
+        let sh = source.height as usize;
+        for y in 0..h {
+            let sy = y * sh / h;
+            let start = sy * sw;
+            self.get_row_mut_unchecked(y as u32)
+                .iter_mut()
+                .enumerate()
+                .for_each(|(x, pixel)| {
+                    let sx = x * sw / w;
+                    *pixel = source.buffer[start + sx];
+                });
+        }
     }
-    fn m_draw_horizontal_line<const BLENDING_ENABLED: bool>(
-        &mut self,
-        mut x0: i32,
-        mut x1: i32,
-        y: i32,
-        color: u32,
-    ) {
+    fn draw_horizontal_line(&mut self, mut x0: i32, mut x1: i32, y: i32, color: u32) {
         if x1 < x0 {
             std::mem::swap(&mut x0, &mut x1);
         }
@@ -88,16 +126,29 @@ impl<'b> Renderer<'b> {
             let y = y as u32;
             let x0 = x0.max(0) as u32;
             let xn = (x1 as u32).min(self.width);
-            let start_i = (y * self.stride + x0) as usize;
-            let end_i = (y * self.stride + xn) as usize;
-            self.buffer[start_i..end_i].iter_mut().for_each(|pixel| {
-                if BLENDING_ENABLED {
-                    blend_color(pixel, color);
-                } else {
-                    *pixel = color;
-                }
-            });
+            self.draw_horizontal_line_unchecked(x0, xn, y, color);
         }
+    }
+    #[inline]
+    pub fn draw_horizontal_line_unchecked(&mut self, x0: u32, x1: u32, y: u32, color: u32) {
+        (self.draw_horizontal_line_unchecked_ptr)(self, x0, x1, y, color);
+    }
+    fn m_draw_horizontal_line_unchecked<const BLENDING_ENABLED: bool>(
+        &mut self,
+        x0: u32,
+        xn: u32,
+        y: u32,
+        color: u32,
+    ) {
+        let start_i = (y * self.stride + x0) as usize;
+        let end_i = (y * self.stride + xn) as usize;
+        self.buffer[start_i..=end_i].iter_mut().for_each(|pixel| {
+            if BLENDING_ENABLED {
+                blend_color(pixel, color);
+            } else {
+                *pixel = color;
+            }
+        });
     }
     pub fn draw_line(&mut self, x0: i32, y0: i32, x1: i32, y1: i32, color: u32) {
         let (x0, y0, x1, y1) = if let Some(Line2D { x0, y0, x1, y1 }) = (Line2D {
@@ -125,7 +176,7 @@ impl<'b> Renderer<'b> {
         }
     }
     pub fn fill(&mut self, color: u32) {
-        self.buffer.iter_mut().for_each(|pixel| *pixel = color);
+        self.fill_rect(0, 0, self.width as i32, self.height as i32, color);
     }
     #[allow(clippy::too_many_arguments)]
     pub fn fill_triangle(
@@ -318,11 +369,9 @@ impl<'b> Renderer<'b> {
     }
     pub fn fill_rect(&mut self, x0: i32, y0: i32, w: i32, h: i32, color: u32) {
         if let Some(((x0, y0), (x1, y1))) = normalize_rect(x0, y0, w, h, self.width, self.height) {
-            for y in y0..=y1 {
-                for x in x0..=x1 {
-                    self.draw_pixel_unchecked(x, y, color);
-                }
-            }
+            (y0..=y1).for_each(|y| {
+                self.draw_horizontal_line_unchecked(x0, x1, y, color);
+            });
         }
     }
     pub fn fill_text(&mut self, text: &str, x0: i32, y0: i32, glyph_size: usize, color: u32) {
@@ -349,13 +398,16 @@ impl<'b> Renderer<'b> {
         let file = File::create(path)?;
         let mut file = BufWriter::new(file);
         write!(file, "P6\n{} {} 255\n", self.width, self.height)?;
-        for &pixel in self.buffer.iter() {
-            let rgb: [u8; 3] = [
-                ((pixel) & 0xFF) as u8,
-                ((pixel >> 8) & 0xFF) as u8,
-                ((pixel >> (8 * 2)) & 0xFF) as u8,
-            ];
-            file.write_all(&rgb)?;
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let pixel = self.buffer[(y * self.width + x) as usize];
+                let rgb: [u8; 3] = [
+                    ((pixel) & 0xFF) as u8,
+                    ((pixel >> 8) & 0xFF) as u8,
+                    ((pixel >> (8 * 2)) & 0xFF) as u8,
+                ];
+                file.write_all(&rgb)?;
+            }
         }
         Ok(())
     }
@@ -402,7 +454,7 @@ impl<'b> Renderer<'b> {
             }
         }
         let color = self.aa_color(count_aa, color);
-        self.m_draw_pixel_unchecked::<true>(x as u32, y as u32, color);
+        self.m_draw_pixel_unchecked::<true>(x, y, color);
     }
 }
 

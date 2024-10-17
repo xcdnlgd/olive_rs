@@ -9,6 +9,7 @@ phf = { version = "0.11.2", features = ["macros"] }
 [dev-dependencies]
 sdl2 = "0.37.0"
 bytemuck = "1.18.0"
+image = "0.25.2"
 
 [features]
 default = ["sdl"]

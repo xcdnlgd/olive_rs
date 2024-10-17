@@ -237,12 +237,17 @@ fn text_example() {
 
 fn sub_canvas_example() {
     let mut buffer = [0u32; BUFFER_LEN];
+    let mut buffer2 = [0u32; 50 * 50];
     let mut renderer = Renderer::new(&mut buffer, WIDTH, HEIGHT);
+    let mut renderer2 = Renderer::new(&mut buffer2, 50, 50);
     let file = "output/sub_canvas.ppm";
     renderer.fill(BACKGROUND_COLOR);
+    renderer2.fill(BACKGROUND_COLOR);
 
-    let mut sub_canvas = Renderer::sub_canvas(renderer.get_buffer_mut(), 15, 15, 50, 50, WIDTH);
-    sub_canvas.fill_circle(15, 15, 30, FOREGROUND_COLOR);
+    renderer2.fill_circle(25, 25, 20, FOREGROUND_COLOR);
+    let mut sub_canvas =
+        Renderer::sub_canvas(renderer.get_buffer_mut(), 15, 15, 200, 100, WIDTH, HEIGHT);
+    sub_canvas.copy(&renderer2);
 
     renderer.save_to_ppm_file(file).unwrap();
 }
