@@ -50,7 +50,7 @@ pub fn render(buffer: &mut [u32], dt: f32) {
         rotate_point(&mut x2, &mut y2, ANGLE);
         renderer.begin_blending();
         renderer.fill_triangle(x0, y0, x1, y1, x2, y2, 0xaa0000ff);
-        renderer.fill_circle_aa(BALL_X as i32, BALL_Y as i32, BALL_R, 0x9900ff00);
+        renderer.fill_circle_aa(BALL_X as i32, BALL_Y as i32, BALL_R, 0x6900ff00);
         renderer.end_blending();
     }
 }
@@ -192,10 +192,10 @@ fn main() {
     fn color2char(color: u32) -> char {
         #[allow(non_upper_case_globals)]
         const table: &str = " .:a@#";
-        let r = (color & 0x000000ff) as f32;
-        let g = ((color & 0x0000ff00) >> 8) as f32;
-        let b = ((color & 0x00ff0000) >> (8 * 2)) as f32;
-        let brightness = (0.2126 * r + 0.7152 * g + 0.0722 * b).round() as usize;
+        let r = color & 0x000000ff;
+        let g = (color & 0x0000ff00) >> 8;
+        let b = (color & 0x00ff0000) >> (8 * 2);
+        let brightness = ((r + r + r + b + g + g + g + g) >> 3) as usize;
         let i = brightness * table.len() / 256;
         table.as_bytes()[i] as char
     }
