@@ -177,7 +177,6 @@ fn main() {
     const ROWS: u32 = HEIGHT / SCALE_DOWN_FACTOR;
     const COLS: u32 = WIDTH / SCALE_DOWN_FACTOR;
     fn show(buffer: &[u32]) {
-        print!("\x1b[1;1H");
         for r in 0..ROWS {
             let r = r * HEIGHT / ROWS;
             for c in 0..COLS {
@@ -187,6 +186,8 @@ fn main() {
             }
             println!();
         }
+        print!("\x1b[{ROWS}A");
+        print!("\x1b[{COLS}D");
     }
     fn color2char(color: u32) -> char {
         #[allow(non_upper_case_globals)]
