@@ -273,34 +273,85 @@ impl<'b> Renderer<'b> {
     }
     pub fn fill_triangle_mix(
         &mut self,
-        x0: i32,
-        y0: i32,
-        c0: u32,
-        x1: i32,
-        y1: i32,
-        c1: u32,
-        x2: i32,
-        y2: i32,
-        c2: u32,
+        mut x0: i32,
+        mut y0: i32,
+        mut c0: u32,
+        mut x1: i32,
+        mut y1: i32,
+        mut c1: u32,
+        mut x2: i32,
+        mut y2: i32,
+        mut c2: u32,
     ) {
-        self.m_fill_triangle_mix::<false>(x0, y0, c0, x1, y1, c1, x2, y2, c2);
+        sort_by_y3(
+            &mut x0, &mut y0, &mut c0, &mut x1, &mut y1, &mut c1, &mut x2, &mut y2, &mut c2,
+        );
+        self.draw_pixel(x2, y2, c2);
+        let mut ray0 = Ray::new(x0, y0, x1, y1);
+        let mut ray1 = Ray::new(x1, y1, x2, y2);
+        let mut ray2 = Ray::new(x0, y0, x2, y2);
+        let mut row = y0;
+        let (mut cx0, mut cy0) = ray0.next_xy();
+        let (mut cx1, mut cy1) = ray1.next_xy();
+        let (mut cx2, mut cy2) = ray2.next_xy();
+        if y1 != y0 {
+            let x0 = x0 as f32;
+            let y0 = y0 as f32;
+            let x1 = x1 as f32;
+            let y1 = y1 as f32;
+            let x2 = x2 as f32;
+            let y2 = y2 as f32;
+            while row <= ray0.y1 {
+                while cy0 != row {
+                    (cx0, cy0) = ray0.next_xy();
+                }
+                while cy2 != row {
+                    (cx2, cy2) = ray2.next_xy();
+                }
+                // self.draw_horizontal_line(cx0, cx2, row, color);
+                if cx2 < cx0 {
+                    std::mem::swap(&mut cx0, &mut cx2);
+                }
+                for x in cx0..cx2 {
+                    let (u, v, w) = barycentric(x as f32, row as f32, x0, y0, x1, y1, x2, y2);
+                    if u >= 0.0 && v >= 0.0 && w >= 0.0 {
+                        let color = mix_color3(c0, c1, c2, u, v, w);
+                        self.draw_pixel(x, row, color);
+                    }
+                }
+                row += 1;
+            }
+        }
+        if y1 != y2 {
+            let x0 = x0 as f32;
+            let y0 = y0 as f32;
+            let x1 = x1 as f32;
+            let y1 = y1 as f32;
+            let x2 = x2 as f32;
+            let y2 = y2 as f32;
+            while row <= ray1.y1 {
+                while cy1 != row {
+                    (cx1, cy1) = ray1.next_xy();
+                }
+                while cy2 != row {
+                    (cx2, cy2) = ray2.next_xy();
+                }
+                // self.draw_horizontal_line(cx1, cx2, row, color);
+                if cx2 < cx1 {
+                    std::mem::swap(&mut cx1, &mut cx2);
+                }
+                for x in cx1..=cx2 {
+                    let (u, v, w) = barycentric(x as f32, row as f32, x0, y0, x1, y1, x2, y2);
+                    if u >= 0.0 && v >= 0.0 && w >= 0.0 {
+                        let color = mix_color3(c0, c1, c2, u, v, w);
+                        self.draw_pixel(x, row, color);
+                    }
+                }
+                row += 1;
+            }
+        }
     }
     pub fn fill_triangle_mix_aa(
-        &mut self,
-        x0: i32,
-        y0: i32,
-        c0: u32,
-        x1: i32,
-        y1: i32,
-        c1: u32,
-        x2: i32,
-        y2: i32,
-        c2: u32,
-    ) {
-        self.m_fill_triangle_mix::<true>(x0, y0, c0, x1, y1, c1, x2, y2, c2);
-    }
-    #[inline]
-    fn m_fill_triangle_mix<const AA: bool>(
         &mut self,
         x0: i32,
         y0: i32,
@@ -329,23 +380,15 @@ impl<'b> Renderer<'b> {
             let y2 = y2 as f32 + 0.5;
             for y in y_min..=y_max {
                 for x in x_min..=x_max {
-                    if AA {
-                        self.draw_pixel_unchecked_mix_aa(x, y, |x, y| {
-                            let (u, v, w) = barycentric(x, y, x0, y0, x1, y1, x2, y2);
-                            if u >= 0.0 && v >= 0.0 && w >= 0.0 {
-                                let color = mix_color3(c0, c1, c2, u, v, w);
-                                Some(color)
-                            } else {
-                                None
-                            }
-                        });
-                    } else {
-                        let (u, v, w) = barycentric(x as f32, y as f32, x0, y0, x1, y1, x2, y2);
+                    self.draw_pixel_unchecked_mix_aa(x, y, |x, y| {
+                        let (u, v, w) = barycentric(x, y, x0, y0, x1, y1, x2, y2);
                         if u >= 0.0 && v >= 0.0 && w >= 0.0 {
                             let color = mix_color3(c0, c1, c2, u, v, w);
-                            self.draw_pixel_unchecked(x, y, color);
+                            Some(color)
+                        } else {
+                            None
                         }
-                    }
+                    });
                 }
             }
         }
@@ -503,6 +546,7 @@ impl<'b> Renderer<'b> {
         }
         Ok(())
     }
+    #[inline]
     fn draw_pixel(&mut self, x: i32, y: i32, color: u32) {
         if x < 0 || y < 0 {
             return;
@@ -1483,6 +1527,34 @@ fn sort_by_y(x0: &mut i32, y0: &mut i32, x1: &mut i32, y1: &mut i32, x2: &mut i3
     }
 }
 
+fn sort_by_y3(
+    x0: &mut i32,
+    y0: &mut i32,
+    c0: &mut u32,
+    x1: &mut i32,
+    y1: &mut i32,
+    c1: &mut u32,
+    x2: &mut i32,
+    y2: &mut i32,
+    c2: &mut u32,
+) {
+    if y0 > y1 {
+        std::mem::swap(y0, y1);
+        std::mem::swap(x0, x1);
+        std::mem::swap(c0, c1);
+    }
+    if y1 > y2 {
+        std::mem::swap(y1, y2);
+        std::mem::swap(x1, x2);
+        std::mem::swap(c1, c2);
+    }
+    if y0 > y1 {
+        std::mem::swap(y0, y1);
+        std::mem::swap(x0, x1);
+        std::mem::swap(c0, c1);
+    }
+}
+
 fn blend_color(bottom_color: &mut u32, top_color: u32) {
     let mut bottom_color_components = [0u8; 4];
     for (i, color_component) in bottom_color_components.iter_mut().enumerate() {
@@ -1665,8 +1737,8 @@ fn barycentric(
     // Barycentric coordinate system
     // https://github.com/ssloy/tinyrenderer/wiki/Lesson-2:-Triangle-rasterization-and-back-face-culling#:~:text=It%20means%20that%20we%20are%20looking%20for%20a%20vector%20(u%2Cv%2C1)%20that%20is%20orthogonal%20to%20(ABx%2CACx%2CPAx)%20and%20(ABy%2CACy%2CPAy)%20at%20the%20same%20time!
     let (x, y, z) = vector3_a_cross_b(x1 - x0, x2 - x0, x0 - x, y1 - y0, y2 - y0, y0 - y);
-    let u = x / z;
-    let v = y / z;
-    let w = 1.0 - u - v;
+    let v = x / z;
+    let w = y / z;
+    let u = 1.0 - w - v;
     (u, v, w)
 }
