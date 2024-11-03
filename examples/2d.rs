@@ -10,6 +10,10 @@ static mut BULL_X_SPEED: f32 = 200f32;
 static mut BALL_Y: f32 = (HEIGHT / 2) as f32;
 static mut BULL_Y_SPEED: f32 = 200f32;
 
+const RED: u32 = 0xff_0000ff;
+const GREEN: u32 = 0xff_00ff00;
+const BLUE: u32 = 0xff_ff0000;
+
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 600;
 
@@ -49,7 +53,7 @@ pub fn render(buffer: &mut [u32], dt: f32) {
         rotate_point(&mut x1, &mut y1, ANGLE);
         rotate_point(&mut x2, &mut y2, ANGLE);
         renderer.begin_blending();
-        renderer.fill_triangle(x0, y0, x1, y1, x2, y2, 0xaa0000ff);
+        renderer.fill_triangle_mix(x0, y0, RED, x1, y1, GREEN, x2, y2, BLUE);
         renderer.fill_circle_aa(BALL_X as i32, BALL_Y as i32, BALL_R, 0x6900ff00);
         renderer.end_blending();
     }

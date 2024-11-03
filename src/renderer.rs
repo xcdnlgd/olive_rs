@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use std::{
     fs::File,
     io::{BufWriter, Write},
@@ -191,7 +193,6 @@ impl<'b> Renderer<'b> {
     pub fn fill(&mut self, color: u32) {
         self.fill_rect(0, 0, self.width as i32, self.height as i32, color);
     }
-    #[allow(clippy::too_many_arguments)]
     pub fn fill_triangle(
         &mut self,
         mut x0: i32,
@@ -236,7 +237,6 @@ impl<'b> Renderer<'b> {
             }
         }
     }
-    #[allow(clippy::too_many_arguments)]
     pub fn fill_triangle_aa(
         &mut self,
         x0: i32,
@@ -267,6 +267,85 @@ impl<'b> Renderer<'b> {
                     self.draw_pixel_unchecked_aa(x, y, color, |x, y| {
                         xy_in_triangle(x, y, x0, y0, x1, y1, x2, y2)
                     });
+                }
+            }
+        }
+    }
+    pub fn fill_triangle_mix(
+        &mut self,
+        x0: i32,
+        y0: i32,
+        c0: u32,
+        x1: i32,
+        y1: i32,
+        c1: u32,
+        x2: i32,
+        y2: i32,
+        c2: u32,
+    ) {
+        self.m_fill_triangle_mix::<false>(x0, y0, c0, x1, y1, c1, x2, y2, c2);
+    }
+    pub fn fill_triangle_mix_aa(
+        &mut self,
+        x0: i32,
+        y0: i32,
+        c0: u32,
+        x1: i32,
+        y1: i32,
+        c1: u32,
+        x2: i32,
+        y2: i32,
+        c2: u32,
+    ) {
+        self.m_fill_triangle_mix::<true>(x0, y0, c0, x1, y1, c1, x2, y2, c2);
+    }
+    #[inline]
+    fn m_fill_triangle_mix<const AA: bool>(
+        &mut self,
+        x0: i32,
+        y0: i32,
+        c0: u32,
+        x1: i32,
+        y1: i32,
+        c1: u32,
+        x2: i32,
+        y2: i32,
+        c2: u32,
+    ) {
+        let ((x_min, y_min), (x_max, y_max)) = triangle_bunding_box(x0, y0, x1, y1, x2, y2);
+        if let Some(((x_min, y_min), (x_max, y_max))) = normalize_rect(
+            x_min,
+            y_min,
+            x_max - x_min + 1,
+            y_max - y_min + 1,
+            self.width,
+            self.height,
+        ) {
+            let x0 = x0 as f32 + 0.5;
+            let y0 = y0 as f32 + 0.5;
+            let x1 = x1 as f32 + 0.5;
+            let y1 = y1 as f32 + 0.5;
+            let x2 = x2 as f32 + 0.5;
+            let y2 = y2 as f32 + 0.5;
+            for y in y_min..=y_max {
+                for x in x_min..=x_max {
+                    if AA {
+                        self.draw_pixel_unchecked_mix_aa(x, y, |x, y| {
+                            let (u, v, w) = barycentric(x, y, x0, y0, x1, y1, x2, y2);
+                            if u >= 0.0 && v >= 0.0 && w >= 0.0 {
+                                let color = mix_color3(c0, c1, c2, u, v, w);
+                                Some(color)
+                            } else {
+                                None
+                            }
+                        });
+                    } else {
+                        let (u, v, w) = barycentric(x as f32, y as f32, x0, y0, x1, y1, x2, y2);
+                        if u >= 0.0 && v >= 0.0 && w >= 0.0 {
+                            let color = mix_color3(c0, c1, c2, u, v, w);
+                            self.draw_pixel_unchecked(x, y, color);
+                        }
+                    }
                 }
             }
         }
@@ -466,8 +545,35 @@ impl<'b> Renderer<'b> {
                 }
             }
         }
-        let color = self.aa_color(count_aa, color);
-        self.m_draw_pixel_unchecked::<true>(x, y, color);
+        if count_aa > 0 {
+            let color = self.aa_color(count_aa, color);
+            self.m_draw_pixel_unchecked::<true>(x, y, color);
+        }
+    }
+    fn draw_pixel_unchecked_mix_aa(
+        &mut self,
+        x: u32,
+        y: u32,
+        color_fn: impl Fn(f32, f32) -> Option<u32>, // Option<color>
+    ) {
+        let mut count_aa = 0;
+        let mut color = None;
+        for sub_x in 1..=AA_RES {
+            for sub_y in 1..=AA_RES {
+                let x = x as f32 + sub_x as f32 * AA_PADDING;
+                let y = y as f32 + sub_y as f32 * AA_PADDING;
+                if let Some(sub_color) = color_fn(x, y) {
+                    count_aa += 1;
+                    if color.is_none() {
+                        color = Some(sub_color);
+                    }
+                }
+            }
+        }
+        if let Some(color) = color {
+            let color = self.aa_color(count_aa, color);
+            self.m_draw_pixel_unchecked::<true>(x, y, color);
+        }
     }
 }
 
@@ -1402,6 +1508,56 @@ fn blend_color(bottom_color: &mut u32, top_color: u32) {
     }
 }
 
+#[inline]
+fn red_part(color: u32) -> u32 {
+    color & 0xff
+}
+#[inline]
+fn green_part(color: u32) -> u32 {
+    (color >> 8) & 0xff
+}
+#[inline]
+fn blue_part(color: u32) -> u32 {
+    (color >> (8 * 2)) & 0xff
+}
+#[inline]
+fn alpha_part(color: u32) -> u32 {
+    (color >> (8 * 3)) & 0xff
+}
+#[inline]
+fn rgba2color(r: u32, g: u32, b: u32, a: u32) -> u32 {
+    let mut color = 0u32;
+    color |= r & 0x000000ff;
+    color |= (g << 8) & 0x0000ff00;
+    color |= (b << (8 * 2)) & 0x00ff0000;
+    color |= (a << (8 * 3)) & 0xff000000;
+    color
+}
+
+fn mix_color3(c0: u32, c1: u32, c2: u32, t0: f32, t1: f32, t2: f32) -> u32 {
+    let r0 = red_part(c0) as f32;
+    let g0 = green_part(c0) as f32;
+    let b0 = blue_part(c0) as f32;
+    let a0 = alpha_part(c0) as f32;
+
+    let r1 = red_part(c1) as f32;
+    let g1 = green_part(c1) as f32;
+    let b1 = blue_part(c1) as f32;
+    let a1 = alpha_part(c1) as f32;
+
+    let r2 = red_part(c2) as f32;
+    let g2 = green_part(c2) as f32;
+    let b2 = blue_part(c2) as f32;
+    let a2 = alpha_part(c2) as f32;
+
+    let r = (r0 * t0 + r1 * t1 + r2 * t2) as u32;
+    let g = (g0 * t0 + g1 * t1 + g2 * t2) as u32;
+    let b = (b0 * t0 + b1 * t1 + b2 * t2) as u32;
+    let a = (a0 * t0 + a1 * t1 + a2 * t2) as u32;
+
+    rgba2color(r, g, b, a)
+}
+
 fn aa_color<const BLENDING_ENABLED: bool>(count: u8, color: u32) -> u32 {
     let old_alpha = if BLENDING_ENABLED {
         color >> (8 * 3) & 0xff
@@ -1479,21 +1635,38 @@ fn triangle_bunding_box(
     ((x0, y0), (x2, y2))
 }
 
-#[allow(clippy::too_many_arguments)]
+#[inline]
 fn xy_in_triangle(x: f32, y: f32, x0: f32, y0: f32, x1: f32, y1: f32, x2: f32, y2: f32) -> bool {
+    let (u, v, w) = barycentric(x, y, x0, y0, x1, y1, x2, y2);
+    u >= 0.0 && v >= 0.0 && w >= 0.0
+}
+
+// return (x, y, z)
+#[inline]
+fn vector3_a_cross_b(ax: f32, ay: f32, az: f32, bx: f32, by: f32, bz: f32) -> (f32, f32, f32) {
+    let x = ay * bz - az * by;
+    let y = az * bx - ax * bz;
+    let z = ax * by - ay * bx;
+    (x, y, z)
+}
+
+// return (u, v, w)
+#[inline]
+fn barycentric(
+    x: f32,
+    y: f32,
+    x0: f32,
+    y0: f32,
+    x1: f32,
+    y1: f32,
+    x2: f32,
+    y2: f32,
+) -> (f32, f32, f32) {
     // Barycentric coordinate system
     // https://github.com/ssloy/tinyrenderer/wiki/Lesson-2:-Triangle-rasterization-and-back-face-culling#:~:text=It%20means%20that%20we%20are%20looking%20for%20a%20vector%20(u%2Cv%2C1)%20that%20is%20orthogonal%20to%20(ABx%2CACx%2CPAx)%20and%20(ABy%2CACy%2CPAy)%20at%20the%20same%20time!
     let (x, y, z) = vector3_a_cross_b(x1 - x0, x2 - x0, x0 - x, y1 - y0, y2 - y0, y0 - y);
     let u = x / z;
     let v = y / z;
     let w = 1.0 - u - v;
-    u >= 0.0 && v >= 0.0 && w >= 0.0
-}
-
-// return (x, y, z)
-fn vector3_a_cross_b(ax: f32, ay: f32, az: f32, bx: f32, by: f32, bz: f32) -> (f32, f32, f32) {
-    let x = ay * bz - az * by;
-    let y = az * bx - ax * bz;
-    let z = ax * by - ay * bx;
-    (x, y, z)
+    (u, v, w)
 }

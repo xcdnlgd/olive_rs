@@ -209,6 +209,25 @@ fn triangle_aa_example() {
     renderer.save_to_ppm_file(file).unwrap();
 }
 
+fn triangle_mix_example() {
+    let mut buffer = [0u32; BUFFER_LEN];
+    let mut renderer = Renderer::new(&mut buffer, WIDTH, HEIGHT);
+    let file = "output/triangle_mix.ppm";
+    renderer.fill(BACKGROUND_COLOR);
+    renderer.fill_triangle_mix_aa(
+        WIDTH as i32 / 2,
+        HEIGHT as i32 / 8,
+        RED,
+        WIDTH as i32 / 8,
+        HEIGHT as i32 / 2,
+        GREEN,
+        WIDTH as i32 * 7 / 8,
+        HEIGHT as i32 * 7 / 8,
+        BLUE,
+    );
+    renderer.save_to_ppm_file(file).unwrap();
+}
+
 fn text_example() {
     let mut buffer = [0u32; BUFFER_LEN];
     let mut renderer = Renderer::new(&mut buffer, WIDTH, HEIGHT);
@@ -263,4 +282,5 @@ fn main() {
     triangle_aa_example();
     text_example();
     sub_canvas_example();
+    triangle_mix_example();
 }
