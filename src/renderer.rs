@@ -140,7 +140,7 @@ impl<'b> Renderer<'b> {
         if 0 <= y && (y as u32) < self.height {
             let y = y as u32;
             let x0 = x0.max(0) as u32;
-            let xn = (x1 as u32).min(self.width);
+            let xn = (x1 as u32).min(self.width - 1);
             self.draw_horizontal_line_unchecked(x0, xn, y, color);
         }
     }
